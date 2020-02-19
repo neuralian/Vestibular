@@ -10,6 +10,23 @@ using AbstractPlotting
 using Colors
 using Distributions
 
+
+# Biophysical parameters
+kᵦ = 1.38e-23  # Boltzmann constant J/K or m^2 kg ^-2 K^-1
+T  = 300.      # temperature K
+z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
+d  = 3.5e-9    # Gate swing distance 3.5nm
+pᵣ = 0.15      # resting/spontaneous open state probability
+Nch = 48       # number of gating channels
+
+# simulation parameters
+
+# plot parameters
+kcx0 = 600.   # location of kinocilium in scene (pixels from BL)
+kcy0 = 600.   # ""
+pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
+hairScale = 0.05 # scale deflection from plot to gate state animation
+
 CleanAxis(scene) = LAxis(scene,
                           titlevisible = false,
                           xticksvisible = false,
@@ -38,17 +55,11 @@ scene_layout[3, 1:2] = afferent_spike_axis = CleanAxis(scene)
 
 scatter!(hc_potential_axis, rand(Point2f0, 20))
 
+
+
 display(scene)
 
 
-kᵦ = 1.38e-23  # Boltzmann constant J/K or m^2 kg ^-2 K^-1
-T  = 300.      # temperature K
-z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
-d  = 3.5e-9    # Gate swing distance 3.5nm
-pᵣ = 0.15      # resting/spontaneous open state probability
-Nch = 48       # number of gating channels
-pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
-hairScale = 0.05 # scale deflection from plot to gate-state animation
 
 # solve p₀(x₀)= 1/2 (deflection when open state prob = 1/2)
 x₀ =  kᵦ*T*log( (1-pᵣ)/pᵣ)/z
@@ -59,15 +70,15 @@ xRange =  kᵦ*T*log( (1-pRange)/pRange)/z
 # open state probability as a function of bundle deflection
 p₀(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
 
-# plot
+# x-axis for animation pane
 nPts = 100.
 xScale = 1e-9    # x-axis in nm
 x = (x₀ .+ collect((-nPts/2.):(nPts/2.))/nPts*xRange)/xScale
 
+# slider to control kinocilium deflection
+kinocilium_slider  = LSlider(scene, range = LinRange(x[1], x[end], 100))
+scene_layout[1,1] = kinocilium_slider
 
-nPts = 100.
-xScale = 1e-9    # x-axis in nm
-x = (x₀ .+ collect((-nPts/2.):(nPts/2.))/nPts*xRange)/xScale
 
  lines!(hc_animation_axis, x,  p₀(x*xScale),
              linewidth =4,
@@ -116,13 +127,13 @@ function drawHairCell(panel, x0,y0, state)
   dx = 20.
   dy = 14.
 
-
+  # kinocilium, drawn in scene at (x0, y0)
   scatter!(panel, [x0],[y0],
     marker=:hexagon,
-    markersize = 20,
-    color =  RGBA(.5,0.,.5,.5),
+    markersize = 18,
+    color =  :white,
     strokecolor =:black,
-    strokewidth=.1)
+    strokewidth=.75)
 
   x = zeros(48)
   y = zeros(48)
@@ -162,28 +173,21 @@ function drawHairCell(panel, x0,y0, state)
 end
 
 # draw hair cell (resting state)
-HC_handle = drawHairCell(scene, 600., 600., rand(48).<pᵣ)
 
+haircell_handle = drawHairCell(scene, kcx0, kcy0, rand(48).<pᵣ)
 
-
-
-# slider controls kinocillium deflection
-s1 = LSlider(scene, range = LinRange(x[1], x[end], 100))
-scene_layout[1,1] = s1 
-# deflection = s1[end][:value]
+# kinocilium_deflection = kinocilium_slider[end][:value]
 # vbox(s1, parent=control_panel)
-#
-#
-#
-# # draw kinocillium deflection indicators
-# scatter!(scene, [deflection[]*hairScale, 0.5],
-#                 [0.5, p₀(deflection[]*xScale)],
-#                 marker = [:hexagon,:circle],
-#                 color = RGBA(.5,0.,.5,1.0),
-#                 markersize = [32, 24],
-#                 strokewidth = 1,
-#                 strokecolor = :black)
-# KC_handle = scene[end]  # Array{Point{2,Float32},1} coordinates
+
+# draw kinocillium deflection indicator
+scatter!(scene, [kcx0+kinocilium_slider.value[]*hairScale, kcy0+0.5],
+                [kcx0+0.5,kcy0+p₀(kinocilium_slider.value[]*xScale)],
+                marker = [:hexagon,:circle],
+                color = [RGB(.5,0.,.5), RGBA(.5,0.,.5,.25)],
+                markersize = [18, 18],
+                strokewidth = 0.5,
+                strokecolor = :black)
+kinocilium_handle = scene[end]  # Array{Point{2,Float32},1} coordinates
 #
 #
 #
@@ -193,32 +197,35 @@ scene_layout[1,1] = s1
 #
 #
 #
-# # animate gate states
-# # gates flicker open (yellow) and closed (blue)
-# @async while isopen(S) # run this block as parallel thread
-#                        # while scene (window) is open
-#
-#   # random (Normal) Brownian perturbation to deflection, RMS 2nm
-#   # nb deflection is an Observable whose (observed) value is deflection[]
-#   # Similarly randn(1) is a 1-element array of random numbers
-#   #    and randn(1)[] (or randn(1)[1]) is a random number
-#   Δk = deflection[] +Float32(randn(1)[])*2.0
-#
-#   p = p₀(Δk*xScale)
-#   gateState = rand(48).<p
-#   HC_handle[:color] = [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
-#
-#   KC_handle[1][] = [Point2f0(Δk*hairScale, 0.5), Point2f0(Δk, p)]
-#
-#   dScale = .5
-#   push!(deleteat!(w,1), Δk*dScale)
-#   D[2] = w
-#
-#   sleep(.005)
-#
-#
-#   yield() # allow code below this block to run
-#           # while continuing to run this block
-# end
-#
-# RecordEvents(S, "output")
+# animate gate states
+# gates flicker open (yellow) and closed (blue)
+# WARNING: These graphical objects (including callbacks) persist
+#          unless scene is closed before re-running the script
+@async while isopen(scene) # run this block as parallel thread
+                       # while scene (window) is open
+
+  # random (Normal) Brownian perturbation to deflection, RMS 2nm
+  # nb deflection is an Observable whose (observed) value is deflection[]
+  # Similarly randn(1) is a 1-element array of random numbers
+  #    and randn(1)[] (or randn(1)[1]) is a random number
+  Δk = kinocilium_slider.value[] +Float32(randn(1)[])*2.0
+
+  p = p₀(Δk*xScale)
+  gateState = rand(48).<p
+  haircell_handle[:color] = [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+
+  kinocilium_handle[1][] = [Point2f0(kcx0+Δk*hairScale, kcy0+0.5),
+                            Point2f0(kcx0+Δk,  kcy0+p)]
+
+  # dScale = .5
+  # push!(deleteat!(w,1), Δk*dScale)
+  # D[2] = w
+
+  sleep(.005)
+
+
+  yield() # allow code below this block to run
+          # while continuing to run this block
+end
+
+RecordEvents(scene, "output")
