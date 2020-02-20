@@ -23,8 +23,8 @@ nm = 1e-9  # nanometers
 # simulation parameters
 
 # plot parameters
-kcx0 = 600.   # location of kinocilium in scene (pixels from BL)
-kcy0 = 600.   # ""
+kcx0 = 60.   # location of kinocilium in scene (pixels from BL)
+kcy0 = 0.6   # ""
 pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
 hairScale = 0.05 # scale deflection from plot to gate state animation
 maxTime = 1000   # duration of time series plots (haircell state and spikes)
@@ -61,13 +61,15 @@ scene = Scene(resolution = (1000,800), camera=campixel!)
 nPlots = 2
 nRows = nPlots+1
 scene_layout = GridLayout(scene, nRows, 2,
-                    colsizes = [Relative(0.3), Relative(0.7)],
-                    rowsizes = [Relative(0.6), Relative(0.2), Relative(0.2)],
+                    colsizes = [Relative(0.5), Relative(0.5)],
+                    rowsizes = [Relative(0.5), Relative(0.25), Relative(0.25)],
                     alignmode = Outside(30, 30, 30, 30))
 
+animation_layout = GridLayout(2,1, rowsizes = [Relative(.05), Relative(.95)])
+animation_layout[2, 1] = hc_animation_axis = LAxis(scene)
 
 # Hair cell animation pane
-scene_layout[1,2]    = hc_animation_axis = LAxis(scene)
+scene_layout[1,2]  = animation_layout
 hc_animation_axis.xlabel  = "Deflection /nm"
 hc_animation_axis.ylabel = "Open Probability"
 hc_animation_axis.xgridvisible = false
@@ -87,18 +89,9 @@ hc_state = fill(0.0, maxTime+1)
 hc_state_plot = lines!(hc_state_axis, t, hc_state, color = :darkcyan)
 hc_state_axis.limits[] = FRect(0., -515., 1001., 1530.)
 
-
-
-
 display(scene)
 
-
-
-
 scene_layout[3, 1:2] = afferent_spike_axis = CleanAxis(scene)
-
-
-
 
 # # x-axis for animation pane
 # nPts = 100.
@@ -108,24 +101,66 @@ scene_layout[3, 1:2] = afferent_spike_axis = CleanAxis(scene)
 # slider to control kinocilium deflection
 kinocilium_slider  = LSlider(scene,
                              range = LinRange(min_deflect, max_deflect, 100))
-scene_layout[1,1] = kinocilium_slider
-
-
+animation_layout[1,1] = kinocilium_slider
 
 display(scene)
 
+function scattergon(ax, x, y, n;
+                    markersize = 1, color = :red,
+                    strokewidth=.1, strokecolor=:black)
+    # scatterplot points x as n-gons
+    # size re. x-axis, aspect ratio adjusted to compensate for dataaspectratio
+    # (workaround for bug(?) in Makielayout)
+    # NB use movegon to reposition these markers (for animation)
+
+    axlim = decompose(Point2f0, ax.limits[])
+    xlim = axlim[4][1] - axlim[1][1]
+    ylim = axlim[4][2] - axlim[1][2]
+    aspect = 1.5*ylim/xlim
+
+    ngonx = [0.5*markersize*cos(2.0*π*i/n) for i in 1:n]
+    ngony = [0.5*markersize*aspect*sin(2.0*π*i/n) for i in 1:n]
+
+    ngon = [[ Point2f0(x[1]+ ngonx[j], y[1] + ngony[j]) for j in 1:n]]
+
+    for i in 2:length(x)
+        push!(ngon,[ Point2f0(x[i]+ ngonx[j], y[i] + ngony[j]) for j in 1:n] )
+    end
+
+    h = poly!(ax, ngon, color = color,
+                strokewidth=strokewidth, strokecolor=strokecolor, zorder = 1)
+
+    return h    # observable marker vertex coordinates
+end
+
+function movegon(ngon, i, x,y)
+    # move polygon created by scattergon() to (x,y)
+    # nb ngon returned from scattergon() is an observable
+    #    1D array whose entries are
+    #    nx2 arrays defining n-gon markers. Index i specifies which of these
+    #    to move to (x,y).  This version moves only 1 marker.
+
+    vertex = ngon[1][][i]
+    n = size(vertex,1)
+    oldpos = (sum(vertex, dims=1)/n)[1]  # marker location Point2f0
+    newpos = Point2f0(x,y)
+    for j in 1:n
+        vertex[j] = vertex[j] - oldpos + newpos
+    end
+    ngon[1][] = ngon[1][]   # triggers re-draw (ngon is observable)
+end
+
 function drawHairCell(panel, x0,y0, state)
 
-  dx = 20.
-  dy = 16.
+  dx = 75.
+  dy = .055
 
   # kinocilium, drawn in scene at (x0, y0)
-  scatter!(panel, [x0],[y0],
-    marker=:hexagon,
-    markersize = 18,
-    color =  :white,
-    strokecolor =:black,
-    strokewidth=.75)
+  # outline (stays in place)
+  scattergon(panel, [x0],[y0], 6, markersize = 64,
+          color = :white, strokecolor =:black,  strokewidth=.75)
+  kinocilium_handle =   scattergon(panel, [x0],[y0], 6, markersize = 64,
+            color = RGBA(.75,.25,.5,.5), strokecolor =:black,  strokewidth=.75)
 
   x = zeros(48)
   y = zeros(48)
@@ -152,45 +187,25 @@ function drawHairCell(panel, x0,y0, state)
 
   # colours
   c = [state[i] ? :gold1 : :dodgerblue1 for i in 1:48]
-  scatter!(panel, x,y,
-        marker=:circle,
-        color = c,
-        markersize = 16,
-        strokewidth = .5,
-        strokecolor=:black)
+  channel_handle = scattergon(panel, x,y, 16,
+                              markersize = 52, color = c,
+                              strokewidth = .75, strokecolor = :black)
 
-
-  return panel[end]  # return handle to hair cell bundle
-
+  # return observable handles to bundle and kinocilium
+  return (channel_handle,  kinocilium_handle)
 end
 
-# draw hair cell (resting state)
+# draw hair cell
+(channel_handle, kinocilium_handle) =
+                drawHairCell(hc_animation_axis,kcx0, kcy0, rand(48).<pᵣ)
 
-haircell_handle = drawHairCell(scene,kcx0, kcy0, rand(48).<pᵣ)
-
-# kinocilium_deflection = kinocilium_slider[end][:value]
-# vbox(s1, parent=control_panel)
-
-# draw kinocillium deflection indicator
-scatter!(scene, [kcx0+kinocilium_slider.value[]*hairScale, kcy0+0.5],
-                [kcx0+0.5,kcy0+p₀(kinocilium_slider.value[])],
-                marker = [:hexagon,:hexagon],
-                color = [RGB(.5,0.,.5), RGBA(.5,0.,.5,.25)],
-                markersize = [18, 16],
-                strokewidth = 0.5,
-                strokecolor = :black)
-kinocilium_handle = scene[end]  # Array{Point{2,Float32},1} coordinates
+# draw state tracker
+tracker_handle = scattergon(hc_animation_axis, [0],[p_open(0.)], 16,
+                              markersize = 42, color = RGBA(.75,.25,.5),
+                              strokecolor =:black,  strokewidth=.75)
 
 display(scene)
-#
-#
-#
-# #depolarizationPane
-# S = hbox(deflectionPane, scene, s1,
-#  sizes = [.3, .55, .05], parent = Scene(resolution = (1000, 800)));
-#
-#
-#
+
 # animate gate states
 # gates flicker open (yellow) and closed (blue)
 # WARNING: These graphical objects (including callbacks) persist
@@ -204,20 +219,19 @@ display(scene)
   #    and randn(1)[] (or randn(1)[1]) is a random number
   Δk = kinocilium_slider.value[] +2.0*randn(1)[]
 
-
-
   p = p_open(Δk*nm)
   gateState = rand(48).<p
-  haircell_handle[:color] = [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  channel_handle[:color] = [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
 
-  kinocilium_handle[1][] = [Point2f0(kcx0+Δk*hairScale, kcy0+0.5),
-                            Point2f0(kcx0+Δk,  kcy0+p)]
+  movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
+  movegon(tracker_handle, 1, Δk, p)
 
   dScale = .5
   push!(deleteat!(hc_state,1), Δk)
   hc_state_plot[2] = hc_state
+  # haircell_handle[1][] = haircell_handle[1][]
+  # display(scene)
   sleep(.005)
-
 
   yield() # allow code below this block to run
           # while continuing to run this block
