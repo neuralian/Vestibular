@@ -6,6 +6,7 @@
 
 using Makie
 using MakieLayout
+using StatsMakie
 using AbstractPlotting
 using Colors
 using Distributions
@@ -96,25 +97,36 @@ haircell_animation_layout[1,1] = kinocilium_slider
 
 # GUI for Exwald model (Goes in controlpanel[1,2])
 exwald_layout = GridLayout(3,1,
-                  rowsizes = [Relative(.3), Relative(.3), Relative(.4)])
+                  rowsizes = [Relative(.05), Relative(.05), Relative(.9)])
 
 # sliders for Exwald neuron parameters
 exwald_layout[1,1] = tau_slider  =
                      LSlider(scene,  range = LinRange(-2.0, 2.0, 100))
 exwald_layout[2,1] = lambda_slider =
                      LSlider(scene,  range = LinRange(0.0, 5.0, 100))
+exwald_layout[3,1] = exwald_axis = LAxis(scene)
+exwald_axis.xlabel = "ISI Distribution"
+exwald_axis.xgridvisible = false
+exwald_axis.ygridvisible = false
+
+
+
 controlpanel_layout[1,2] = exwald_layout
+
+
+
 
 # insert control panel in scene
 scene_layout[1,1] = controlpanel_layout
 
 
 # time series plot pane
-timeseries_layout = GridLayout(3,1,
+timeseries_layout = GridLayout(3,2,
+                    colsizes = [Relative(.2), Relative(.8)],
                     rowsizes = [Relative(.33), Relative(.34), Relative(.33)])
 
 # receptor current
-timeseries_layout[1,1] = receptor_current_axis = CleanAxis(scene)
+timeseries_layout[1,2] = receptor_current_axis = CleanAxis(scene)
 receptor_current_axis.xlabel = "receptor current"
 receptor_current = fill(0.0f0, maxTime+1)
 receptor_current_plothandle =
@@ -122,7 +134,7 @@ receptor_current_plothandle =
 receptor_current_axis.limits[] = FRect(0., 0., 1001., 50.)
 
 # receptor_potential
-timeseries_layout[2,1] = receptor_potential_axis = CleanAxis(scene)
+timeseries_layout[2,2] = receptor_potential_axis = CleanAxis(scene)
 receptor_potential_axis.xlabel = "receptor potential"
 receptor_potential = fill(0.0f0, maxTime+1)
 receptor_potential_plothandle =
@@ -130,8 +142,8 @@ receptor_potential_plothandle =
                 color = :darkcyan)
 receptor_potential_axis.limits[] = FRect(0., 0., 1001., 100.)
 
-# spikes
-timeseries_layout[3,1] = spike_axis = CleanAxis(scene)
+# afferent spike train axis
+timeseries_layout[3,2] = spike_axis = CleanAxis(scene)
 spike_axis.xlabel = "afferent spike train"
 spike = fill(0.0f0, maxTime+1)
 spike_plothandle =
@@ -139,8 +151,15 @@ spike_plothandle =
                 color = :darkcyan)
 spike_axis.limits[] = FRect(0., 0., 1001., 1.25)
 
-# afferent spike train axis
-timeseries_layout[2, 1] = afferent_spike_axis = CleanAxis(scene)
+# distributions
+timeseries_layout[1, 1] = channel_distn_axis = CleanAxis(scene)
+channel_distn_axis.xlabel = "H=0"
+channel_distn_histogram = plot!(channel_distn_axis, collect(1:10), zeros(10))
+channel_distn_axis.limits[] = FRect(-1., 0., 51., 1.)
+timeseries_layout[2, 1] = receptor_distn_axis = CleanAxis(scene)
+receptor_distn_axis.xlabel = "H=0"
+timeseries_layout[3, 1] = ISI_distn_axis = CleanAxis(scene)
+ISI_distn_axis.xlabel = "H=0"
 
 # insert time series pane in scene
 scene_layout[2,1] = timeseries_layout
@@ -268,8 +287,12 @@ end
 # gates flicker open (yellow) and closed (blue)
 # WARNING: These graphical objects (including callbacks) persist
 #          unless scene is closed before re-running the script
+framecount = 0
+X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
 @async while isopen(scene) # run this block as parallel thread
                        # while scene (window) is open
+
+  global framecount = framecount + 1
 
   # random (Normal) Brownian perturbation to deflection, RMS 2nm
   # nb deflection is an Observable whose (observed) value is deflection[]
@@ -286,6 +309,24 @@ end
 
   dScale = .5
   shiftinsert(receptor_current, Float32(sum(gateState)) )
+
+  # channel state distribution
+  if framecount > 100
+      D = histogram(receptor_current, nbins=20)
+      n = length(D.weights)
+      b = collect(D.edges[1])
+      w = sum(D.weights)
+      p = D.weights./w
+      inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), p)
+      channel_entropy = -sum(p[inotzero].*log.(p[inotzero],2))
+       println("Channel entropy: ", channel_entropy)
+
+      for i in 1:n
+          X[i] = Point2f0((b[i]+b[i+1])/2., p[i])
+      end
+      channel_distn_histogram[1][] = X[1:n]
+      framecount = 0
+  end
 
   receptor_current_plothandle[2] = receptor_current
   yield() # allow code below this block to run
