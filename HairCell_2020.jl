@@ -36,7 +36,6 @@ deflect_range = collect(min_deflect:max_deflect)
 # time series plot time base
 t = collect(0:maxTime)
 
-
 # solve p₀(x₀)= 1/2 (deflection when open state prob = 1/2)
 x₀ =  kᵦ*T*log( (1-pᵣ)/pᵣ)/z
 
@@ -46,30 +45,39 @@ xRange =  kᵦ*T*log( (1-pRange)/pRange)/z
 # open state probability as a function of bundle deflection
 p_open(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
 
+#**************************************************************
+#
+#   CONSTRUCT GUI
+#
+#**************************************************************
+
 CleanAxis(scene) = LAxis(scene,
                           titlevisible = false,
                           xticksvisible = false,
                           xticklabelsvisible = false,
-                          xlabelvisible = false,
+                          xlabelvisible = true,
                           yticksvisible = false,
                           yticklabelsvisible = false,
                           ylabelvisible = false,
                           )
 
-# create a scene
+# Scene with 2 panels:
+#    upper panel for GUI and animation control
+#    lower panel for time series plots
 scene = Scene(resolution = (1000,800), camera=campixel!)
-nPlots = 2
-nRows = nPlots+1
-scene_layout = GridLayout(scene, nRows, 2,
-                    colsizes = [Relative(0.5), Relative(0.5)],
-                    rowsizes = [Relative(0.5), Relative(0.25), Relative(0.25)],
+scene_layout = GridLayout(scene, 2, 1,
+                    rowsizes = [Relative(0.5), Relative(0.5)],
                     alignmode = Outside(30, 30, 30, 30))
 
-animation_layout = GridLayout(2,1, rowsizes = [Relative(.05), Relative(.95)])
-animation_layout[2, 1] = hc_animation_axis = LAxis(scene)
+# Control panel has 2 columns
+#    left for hair cell animation
+#    right for Exwald model interface
+controlpanel_layout = GridLayout(1,2, colsizes = [Relative(.5), Relative(.5)])
 
 # Hair cell animation pane
-scene_layout[1,2]  = animation_layout
+haircell_animation_layout= GridLayout(2,1, rowsizes = [Relative(.025), Relative(.975)])
+haircell_animation_layout[2, 1] = hc_animation_axis = LAxis(scene)
+controlpanel_layout[1,1] = haircell_animation_layout
 hc_animation_axis.xlabel  = "Deflection /nm"
 hc_animation_axis.ylabel = "Open Probability"
 hc_animation_axis.xgridvisible = false
@@ -81,27 +89,61 @@ lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nm),
            leg = false,
            limits = FRect(-500., -0.1, 1500., 1.2)
       )
-# hc_animation_axis.limits[] = FRect(-500., -0.1, 1500., 1.2)
-
-# hair cell state (depolarization atm)
-scene_layout[2, 1:2] = hc_state_axis = CleanAxis(scene)
-hc_state = fill(0.0, maxTime+1)
-hc_state_plot = lines!(hc_state_axis, t, hc_state, color = :darkcyan)
-hc_state_axis.limits[] = FRect(0., -515., 1001., 1530.)
-
-display(scene)
-
-scene_layout[3, 1:2] = afferent_spike_axis = CleanAxis(scene)
-
-# # x-axis for animation pane
-# nPts = 100.
-# xScale = 1e-9    # x-axis in nm
-# x = (x₀ .+ collect((-nPts/2.):(nPts/2.))/nPts*lengthUnit)/xScale
-
 # slider to control kinocilium deflection
 kinocilium_slider  = LSlider(scene,
                              range = LinRange(min_deflect, max_deflect, 100))
-animation_layout[1,1] = kinocilium_slider
+haircell_animation_layout[1,1] = kinocilium_slider
+
+# GUI for Exwald model (Goes in controlpanel[1,2])
+exwald_layout = GridLayout(3,1,
+                  rowsizes = [Relative(.3), Relative(.3), Relative(.4)])
+
+# sliders for Exwald neuron parameters
+exwald_layout[1,1] = tau_slider  =
+                     LSlider(scene,  range = LinRange(-2.0, 2.0, 100))
+exwald_layout[2,1] = lambda_slider =
+                     LSlider(scene,  range = LinRange(0.0, 5.0, 100))
+controlpanel_layout[1,2] = exwald_layout
+
+# insert control panel in scene
+scene_layout[1,1] = controlpanel_layout
+
+
+# time series plot pane
+timeseries_layout = GridLayout(3,1,
+                    rowsizes = [Relative(.33), Relative(.34), Relative(.33)])
+
+# receptor current
+timeseries_layout[1,1] = receptor_current_axis = CleanAxis(scene)
+receptor_current_axis.xlabel = "receptor current"
+receptor_current = fill(0.0f0, maxTime+1)
+receptor_current_plothandle =
+         lines!(receptor_current_axis, t, receptor_current, color = :darkcyan)
+receptor_current_axis.limits[] = FRect(0., 0., 1001., 50.)
+
+# receptor_potential
+timeseries_layout[2,1] = receptor_potential_axis = CleanAxis(scene)
+receptor_potential_axis.xlabel = "receptor potential"
+receptor_potential = fill(0.0f0, maxTime+1)
+receptor_potential_plothandle =
+         lines!(receptor_potential_axis, t, receptor_potential,
+                color = :darkcyan)
+receptor_potential_axis.limits[] = FRect(0., 0., 1001., 100.)
+
+# spikes
+timeseries_layout[3,1] = spike_axis = CleanAxis(scene)
+spike_axis.xlabel = "afferent spike train"
+spike = fill(0.0f0, maxTime+1)
+spike_plothandle =
+         lines!(spike_axis, t, spike,
+                color = :darkcyan)
+spike_axis.limits[] = FRect(0., 0., 1001., 1.25)
+
+# afferent spike train axis
+timeseries_layout[2, 1] = afferent_spike_axis = CleanAxis(scene)
+
+# insert time series pane in scene
+scene_layout[2,1] = timeseries_layout
 
 display(scene)
 
@@ -116,7 +158,7 @@ function scattergon(ax, x, y, n;
     axlim = decompose(Point2f0, ax.limits[])
     xlim = axlim[4][1] - axlim[1][1]
     ylim = axlim[4][2] - axlim[1][2]
-    aspect = 1.5*ylim/xlim
+    aspect = 1.4*ylim/xlim
 
     ngonx = [0.5*markersize*cos(2.0*π*i/n) for i in 1:n]
     ngony = [0.5*markersize*aspect*sin(2.0*π*i/n) for i in 1:n]
@@ -144,7 +186,7 @@ function movegon(ngon, i, x,y)
     n = size(vertex,1)
     oldpos = (sum(vertex, dims=1)/n)[1]  # marker location Point2f0
     newpos = Point2f0(x,y)
-    for j in 1:n
+    @inbounds for j in 1:n
         vertex[j] = vertex[j] - oldpos + newpos
     end
     ngon[1][] = ngon[1][]   # triggers re-draw (ngon is observable)
@@ -153,7 +195,7 @@ end
 function drawHairCell(panel, x0,y0, state)
 
   dx = 75.
-  dy = .055
+  dy = .05
 
   # kinocilium, drawn in scene at (x0, y0)
   # outline (stays in place)
@@ -206,6 +248,22 @@ tracker_handle = scattergon(hc_animation_axis, [0],[p_open(0.)], 16,
 
 display(scene)
 
+function shiftinsert(X::Array{Float32,1}, x::Float32 )
+  # shift X left and insert x at the end
+   n = size(X,1)
+   @inbounds for i in 2:n
+     X[i-1] =  X[i]
+   end
+   X[n]=x
+   return X
+end
+
+function afferentNeuron(u, mu, lambda, tau)
+  # Integrate and fire with
+
+
+end
+
 # animate gate states
 # gates flicker open (yellow) and closed (blue)
 # WARNING: These graphical objects (including callbacks) persist
@@ -217,22 +275,19 @@ display(scene)
   # nb deflection is an Observable whose (observed) value is deflection[]
   # Similarly randn(1) is a 1-element array of random numbers
   #    and randn(1)[] (or randn(1)[1]) is a random number
-  Δk = kinocilium_slider.value[] +2.0*randn(1)[]
+  Δk = kinocilium_slider.value[]
 
   p = p_open(Δk*nm)
   gateState = rand(48).<p
-  channel_handle[:color] = [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  channel_handle[:color] = @inbounds [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
 
   movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
   movegon(tracker_handle, 1, Δk, p)
 
   dScale = .5
-  push!(deleteat!(hc_state,1), Δk)
-  hc_state_plot[2] = hc_state
-  # haircell_handle[1][] = haircell_handle[1][]
-  # display(scene)
-  sleep(.005)
+  shiftinsert(receptor_current, Float32(sum(gateState)) )
 
+  receptor_current_plothandle[2] = receptor_current
   yield() # allow code below this block to run
           # while continuing to run this block
 end
