@@ -21,6 +21,9 @@ pᵣ = 0.15      # resting/spontaneous open state probability
 Nch = 48       # number of gating channels
 nm = 1e-9  # nanometers
 
+receptor_alpha = Float32(1e-1)
+receptor_channel_conductance = Float32(5.e-3)
+
 # simulation parameters
 
 # plot parameters
@@ -91,8 +94,7 @@ lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nm),
            limits = FRect(-500., -0.1, 1500., 1.2)
       )
 # slider to control kinocilium deflection
-kinocilium_slider  = LSlider(scene,
-                             range = LinRange(min_deflect, max_deflect, 100))
+kinocilium_slider  = LSlider(scene,      range = LinRange(min_deflect, max_deflect, 100))
 haircell_animation_layout[1,1] = kinocilium_slider
 
 # GUI for Exwald model (Goes in controlpanel[1,2])
@@ -103,7 +105,7 @@ exwald_layout = GridLayout(3,1,
 exwald_layout[1,1] = tau_slider  =
                      LSlider(scene,  range = LinRange(-2.0, 2.0, 100))
 exwald_layout[2,1] = lambda_slider =
-                     LSlider(scene,  range = LinRange(0.0, 5.0, 100))
+                     LSlider(scene, range = LinRange(0.0, 5.0, 100))
 exwald_layout[3,1] = exwald_axis = LAxis(scene)
 exwald_axis.xlabel = "ISI Distribution"
 exwald_axis.xgridvisible = false
@@ -128,19 +130,21 @@ timeseries_layout = GridLayout(3,2,
 # receptor current
 timeseries_layout[1,2] = receptor_current_axis = CleanAxis(scene)
 receptor_current_axis.xlabel = "receptor current"
-receptor_current = fill(0.0f0, maxTime+1)
+receptor_current_trace = fill(0.0f0, maxTime+1)
 receptor_current_plothandle =
-         lines!(receptor_current_axis, t, receptor_current, color = :darkcyan)
-receptor_current_axis.limits[] = FRect(0., 0., 1001., 50.)
+         lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
+receptor_current_axis.limits[] = FRect(0., -15., 1001., 16.)
 
 # receptor_potential
 timeseries_layout[2,2] = receptor_potential_axis = CleanAxis(scene)
 receptor_potential_axis.xlabel = "receptor potential"
-receptor_potential = fill(0.0f0, maxTime+1)
+RRP = -40.0f0   # resting receptor potential
+receptor_potential_trace = fill(RRP, maxTime+1)
+
 receptor_potential_plothandle =
-         lines!(receptor_potential_axis, t, receptor_potential,
+         lines!(receptor_potential_axis, t, receptor_potential_trace,
                 color = :darkcyan)
-receptor_potential_axis.limits[] = FRect(0., 0., 1001., 100.)
+receptor_potential_axis.limits[] = FRect(0., -55.0, 1001., 17.0)
 
 # afferent spike train axis
 timeseries_layout[3,2] = spike_axis = CleanAxis(scene)
@@ -289,46 +293,65 @@ end
 #          unless scene is closed before re-running the script
 framecount = 0
 X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
+
 @async while isopen(scene) # run this block as parallel thread
                        # while scene (window) is open
 
   global framecount = framecount + 1
+  global receptor_alpha
+  global receptor_channel_conductance
+  global RRP
+
 
   # random (Normal) Brownian perturbation to deflection, RMS 2nm
   # nb deflection is an Observable whose (observed) value is deflection[]
   # Similarly randn(1) is a 1-element array of random numbers
   #    and randn(1)[] (or randn(1)[1]) is a random number
-  Δk = kinocilium_slider.value[]
 
-  p = p_open(Δk*nm)
-  gateState = rand(48).<p
-  channel_handle[:color] = @inbounds [gateState[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  Δk = kinocilium_slider.value[] + 5.0f0*randn(Float32,1)[]
 
-  movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
-  movegon(tracker_handle, 1, Δk, p)
+  p = p_open(Δk*nm)          # open probability
+  gateOpen = rand(48).<p     # gate states
+  receptor_conductance = Float32(sum(gateOpen))*receptor_channel_conductance
+  #
+  receptor_potential = receptor_potential_trace[end]
+  #
+  receptor_current = receptor_potential*receptor_conductance
 
-  dScale = .5
-  shiftinsert(receptor_current, Float32(sum(gateState)) )
+  #
+  receptor_potential = RRP + (1.0f0-receptor_alpha)*(receptor_potential - RRP)+
+                              receptor_alpha*receptor_current
 
   # channel state distribution
   if framecount > 100
-      D = histogram(receptor_current, nbins=20)
+      D = histogram(receptor_current_trace, nbins=20)
       n = length(D.weights)
       b = collect(D.edges[1])
       w = sum(D.weights)
-      p = D.weights./w
-      inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), p)
-      channel_entropy = -sum(p[inotzero].*log.(p[inotzero],2))
-       println("Channel entropy: ", channel_entropy)
+      pdf = D.weights./w
+      inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
+      channel_entropy = -sum(pdf[inotzero].*log.(pdf[inotzero],2))
+       # println("Channel entropy: ", channel_entropy)
 
       for i in 1:n
-          X[i] = Point2f0((b[i]+b[i+1])/2., p[i])
+          X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
       end
       channel_distn_histogram[1][] = X[1:n]
       framecount = 0
   end
 
-  receptor_current_plothandle[2] = receptor_current
+  # update display
+  movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
+  movegon(tracker_handle, 1, Δk, p)
+  channel_handle[:color] = @inbounds [gateOpen[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  shiftinsert(receptor_current_trace, receptor_current )
+  receptor_current_plothandle[2] = receptor_current_trace
+  shiftinsert(receptor_potential_trace, receptor_potential )
+  receptor_potential_plothandle[2] = receptor_potential_trace
+
+
+
+
   yield() # allow code below this block to run
           # while continuing to run this block
 end
