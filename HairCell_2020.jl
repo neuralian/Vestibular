@@ -329,31 +329,32 @@ Iaff = 0.0   # integrate and fire neuron state
                               receptor_alpha*receptor_current
 
   # Exwald neuron
+  spike = (rand(1)[]< 0.01*p) ? Float32(1.0) : Float32(0.0)
 
 
-
-  # channel state distribution
-  if framecount > 100
-      D = histogram(receptor_current_trace, nbins=20)
-      n = length(D.weights)
-      b = collect(D.edges[1])
-      w = sum(D.weights)
-      pdf = D.weights./w
-      inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
-      channel_entropy = -sum(pdf[inotzero].*log.(pdf[inotzero],2))
-       # println("Channel entropy: ", channel_entropy)
-
-      for i in 1:n
-          X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
-      end
-      channel_distn_histogram[1][] = X[1:n]
-      framecount = 0
-  end
+  # # channel state distribution
+  # if framecount > 100
+  #     D = histogram(receptor_current_trace, nbins=20)
+  #     n = length(D.weights)
+  #     b = collect(D.edges[1])
+  #     w = sum(D.weights)
+  #     pdf = D.weights./w
+  #     inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
+  #     channel_entropy = -sum(pdf[inotzero].*log.(pdf[inotzero],2))
+  #      # println("Channel entropy: ", channel_entropy)
+  #
+  #     for i in 1:n
+  #         X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
+  #     end
+  #     channel_distn_histogram[1][] = X[1:n]
+  #     framecount = 0
+  # end
 
   # update display
   movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
   movegon(tracker_handle, 1, Δk, p)
-  channel_handle[:color] = @inbounds [gateOpen[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  channel_handle[:color] =
+        @inbounds [gateOpen[i] ? :gold1 : :dodgerblue1 for i in 1:48]
   shiftinsert(receptor_current_trace, receptor_current )
   receptor_current_plothandle[2] = receptor_current_trace
   shiftinsert(receptor_potential_trace, receptor_potential )
