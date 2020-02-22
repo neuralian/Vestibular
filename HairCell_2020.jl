@@ -24,6 +24,8 @@ nm = 1e-9  # nanometers
 receptor_alpha = Float32(1e-1)
 receptor_channel_conductance = Float32(5.e-3)
 
+
+
 # simulation parameters
 
 # plot parameters
@@ -131,6 +133,7 @@ timeseries_layout = GridLayout(3,2,
 timeseries_layout[1,2] = receptor_current_axis = CleanAxis(scene)
 receptor_current_axis.xlabel = "receptor current"
 receptor_current_trace = fill(0.0f0, maxTime+1)
+lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
          lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
 receptor_current_axis.limits[] = FRect(0., -15., 1001., 16.)
@@ -140,18 +143,18 @@ timeseries_layout[2,2] = receptor_potential_axis = CleanAxis(scene)
 receptor_potential_axis.xlabel = "receptor potential"
 RRP = -40.0f0   # resting receptor potential
 receptor_potential_trace = fill(RRP, maxTime+1)
-
+lines!(receptor_potential_axis, t, RRP*ones(length(t)), color = :darkred)
 receptor_potential_plothandle =
          lines!(receptor_potential_axis, t, receptor_potential_trace,
                 color = :darkcyan)
-receptor_potential_axis.limits[] = FRect(0., -55.0, 1001., 17.0)
+receptor_potential_axis.limits[] = FRect(0., -42.0, 1001., 12.0)
 
 # afferent spike train axis
 timeseries_layout[3,2] = spike_axis = CleanAxis(scene)
 spike_axis.xlabel = "afferent spike train"
-spike = fill(0.0f0, maxTime+1)
+spike_trace = fill(0.0f0, maxTime+1)
 spike_plothandle =
-         lines!(spike_axis, t, spike,
+         lines!(spike_axis, t, spike_trace,
                 color = :darkcyan)
 spike_axis.limits[] = FRect(0., 0., 1001., 1.25)
 
@@ -293,7 +296,7 @@ end
 #          unless scene is closed before re-running the script
 framecount = 0
 X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
-
+Iaff = 0.0   # integrate and fire neuron state
 @async while isopen(scene) # run this block as parallel thread
                        # while scene (window) is open
 
@@ -301,7 +304,9 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   global receptor_alpha
   global receptor_channel_conductance
   global RRP
+  global Iaff
 
+  threshold = 250.
 
   # random (Normal) Brownian perturbation to deflection, RMS 2nm
   # nb deflection is an Observable whose (observed) value is deflection[]
@@ -311,16 +316,21 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   Δk = kinocilium_slider.value[] + 5.0f0*randn(Float32,1)[]
 
   p = p_open(Δk*nm)          # open probability
+
   gateOpen = rand(48).<p     # gate states
+
   receptor_conductance = Float32(sum(gateOpen))*receptor_channel_conductance
-  #
+
   receptor_potential = receptor_potential_trace[end]
-  #
+
   receptor_current = receptor_potential*receptor_conductance
 
-  #
-  receptor_potential = RRP + (1.0f0-receptor_alpha)*(receptor_potential - RRP)+
+  receptor_potential = RRP + (1.0f0-receptor_alpha)*(receptor_potential - RRP)-
                               receptor_alpha*receptor_current
+
+  # Exwald neuron
+
+
 
   # channel state distribution
   if framecount > 100
@@ -348,7 +358,8 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   receptor_current_plothandle[2] = receptor_current_trace
   shiftinsert(receptor_potential_trace, receptor_potential )
   receptor_potential_plothandle[2] = receptor_potential_trace
-
+  shiftinsert(spike_trace, spike )
+  spike_plothandle[2] = spike_trace
 
 
 
