@@ -284,6 +284,24 @@ function shiftinsert(X::Array{Float32,1}, x::Float32 )
    return X
 end
 
+function sample_entropy(sample)
+  # entropy using relative frequency histogram as probability distribution
+
+  # empirical pdf
+  D = histogram(sample, nbins=20)
+  n = length(D.weights)
+  b = collect(D.edges[1])
+  w = sum(D.weights)
+  pdf = D.weights./w
+
+  # bins with non-zero frequencies
+  inonzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
+
+  entropy = -sum(pdf[inonzero].*log.(2, pdf[inonzero]))
+
+  return entropy
+end
+
 function afferentNeuron(u, mu, lambda, tau)
   # Integrate and fire with
 
@@ -332,23 +350,24 @@ Iaff = 0.0   # integrate and fire neuron state
   spike = (rand(1)[]< 0.01*p) ? Float32(1.0) : Float32(0.0)
 
 
-  # # channel state distribution
-  # if framecount > 100
-  #     D = histogram(receptor_current_trace, nbins=20)
-  #     n = length(D.weights)
-  #     b = collect(D.edges[1])
-  #     w = sum(D.weights)
-  #     pdf = D.weights./w
-  #     inotzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
-  #     channel_entropy = -sum(pdf[inotzero].*log.(pdf[inotzero],2))
-  #      # println("Channel entropy: ", channel_entropy)
-  #
-  #     for i in 1:n
-  #         X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
-  #     end
-  #     channel_distn_histogram[1][] = X[1:n]
-  #     framecount = 0
-  # end
+  # entropies
+  if framecount > 100
+
+      current_entropy = sample_entropy(receptor_current_trace)
+
+      potential_entropy = sample_entropy(receptor_potential_trace)
+
+      spike_entropy = sample_entropy(spike_trace)
+      println("Entropy: ", current_entropy, ", ",
+                            potential_entropy, ", ",
+                            spike_entropy)
+
+      # for i in 1:n
+      #     X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
+      # end
+      # channel_distn_histogram[1][] = X[1:n]
+      framecount = 0
+  end
 
   # update display
   movegon(kinocilium_handle, 1, kcx0+Δk*hairScale, kcy0)
