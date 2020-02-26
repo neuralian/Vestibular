@@ -51,30 +51,43 @@ const x₀ =  kᵦ*T*log( (1-pᵣ)/pᵣ)/z
 const xRange =  kᵦ*T*log( (1-pRange)/pRange)/z
 
 """
- # Define single compartment neuron with one type of gated channel
+ # Hair cell type
 """
 struct HairCell
+
+  # state variables
    potential::Array{Float32,1}  # receptor potential
+   p_open::Array{Float32,1}     # gate open probability
+   gateOpen::Array{Bool,1}      # gate states (true=open)
    current::Array{Float32,1}    # receptor channel current
+   Δk::Array{Float32,1}         # kinocilium deflection
+
+   # parameters
    resting_potential::Float32
-   resistance::Float32   # passive input resistance
+   resistance::Float32          # passive input resistance
    capacitance::Float32
-   conductance::Float32 # conductance per channel
+   nCh::Int64                   # number of transduction channels
+   conductance::Float32         # conductance per channel
    equilibrium_potential::Float32 # for channel currents
-   Δk::Array{Float32,1}   # kinocilium deflection
-   nCh::Int64              # number of transduction channels
-   p_open::Array{Float32,1}  # gate open probability
-   gateOpen::Array{Bool,1}   # gate states (true=open)
+
  end
 
 # neuron constructor
-function construct_haircell( resting_potential, resistance, capacitance,
-                      channel_equilibrium_potential, p_init)
+function construct_haircell(  resting_potential, resistance, capacitance,
+                              channel_equilibrium_potential, p_init)
 
-    return HairCell([resting_potential], [0.0], resting_potential,
-                    resistance, capacitance,
-                    1.e-7, channel_equilibrium_potential,
-                    [0.0], 48, [p_init], rand(48).<p_init)
+    return HairCell([resting_potential],
+                    [p_init],
+                    rand(48).<p_init,
+                    [0.0],
+                    [0.0],
+
+                    resting_potential,
+                    resistance,
+                    capacitance,
+                    48,
+                    1.e-4,
+                    channel_equilibrium_potential)
 end
 
 # some biophysics
@@ -108,7 +121,8 @@ function stateupdate!(haircell::HairCell)
   haircell.current[] = (haircell.potential[]-haircell.equilibrium_potential)*
                                                                  conductance
   # receptor potential
-  haircell.potential[] +=  dt*(leak_current + haircell.current[])/
+  haircell.potential[] += haircell.resting_potential -
+                         dt*(leak_current + haircell.current[])/
                                                  haircell.capacitance
 
 end
@@ -469,6 +483,8 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   receptor_current_plothandle[2]   = receptor_current_trace
   receptor_potential_plothandle[2] = receptor_potential_trace
   spike_plothandle[2]              = spike_trace
+
+  @printf("%.2f, %.2f\n", haircell.current[], haircell.potential[])
 
   yield() # allow other processes to run
 end
