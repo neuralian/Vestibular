@@ -14,18 +14,20 @@ using Distributions
 using Printf
 
 
-# Biophysical parameters
+# Hair cell biophysical parameters
 const kᵦ = 1.38e-23  # Boltzmann constant J/K or m^2 kg ^-2 K^-1
 const T  = 300.      # temperature K
 const z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
 const d  = 3.5e-9    # Gate swing distance 3.5nm
 const pᵣ = 0.15      # resting/spontaneous open state probability
-const nm = 1e-9  # nanometers
+const nm = 1e-9      # nanometer conversion factor
 
-receptor_alpha = Float32(1e-1)
-receptor_channel_conductance = Float32(5.e-3)
-const receptor_reversal_potential = Float32(-2.0e-3) # Corey and Hudspeth 1979
-
+const haircell_resting_potential = -0.06 # -60mV (Corey and Hudspeth 1979)
+const haircell_input_resistance  = 2.5e8  # 250Mohm (Corey and Hudspeth 1979)
+const haircell_capacitance = 3.0e-11 # 30pF (Roberts, Howard and Hudspeth, 1988)
+const haircell_transduction_reversal_potential = -0.002 # -2mv (C&H 1979)
+const haircell_single_channel_conductance = Float32(500.e-12) # Geleoc &c 1997
+const haircell_channel_reversal_potential = Float32(-.002) # c&H?
 
 # simulation parameters
 const dt = 1.0e-4    # 100 microsecond steps
@@ -51,6 +53,11 @@ const x₀ =  kᵦ*T*log( (1-pᵣ)/pᵣ)/z
 const xRange =  kᵦ*T*log( (1-pRange)/pRange)/z
 
 """
+  # Stereocilia channel open probability as a function of kinocilium deflection
+"""
+p_open(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
+
+"""
  # Hair cell type
 """
 struct HairCell
@@ -68,34 +75,31 @@ struct HairCell
    capacitance::Float32
    nCh::Int64                   # number of transduction channels
    conductance::Float32         # conductance per channel
-   equilibrium_potential::Float32 # for channel currents
+   reversal_potential::Float32 # for channel currents
 
  end
 
 # neuron constructor
-function construct_haircell(  resting_potential, resistance, capacitance,
-                              channel_equilibrium_potential, p_init)
+function construct_haircell(resting_potential)
 
+    p = p_open(0.0)
     return HairCell([resting_potential],
-                    [p_init],
-                    rand(48).<p_init,
+                    [p],
+                    rand(48).<p,
                     [0.0],
                     [0.0],
 
-                    resting_potential,
-                    resistance,
-                    capacitance,
+                    haircell_resting_potential,
+                    haircell_input_resistance,
+                    haircell_capacitance,
                     48,
-                    1.e-4,
-                    channel_equilibrium_potential)
+                    haircell_single_channel_conductance,
+                    haircell_channel_reversal_potential)
 end
 
 # some biophysics
 
-"""
-  # Stereocilia channel open probability as a function of kinocilium deflection
-"""
-p_open(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
+
 
 """
   #  Update neuronal membrane potential over time step dt
@@ -110,6 +114,8 @@ function stateupdate!(haircell::HairCell)
 
   haircell.p_open[] = p_open(haircell.Δk[])  # gate open probability
 
+
+
   haircell.gateOpen[:] = rand(48) .< haircell.p_open[]     # gate states
 
   conductance = Float32(sum(haircell.gateOpen))*haircell.conductance
@@ -118,26 +124,18 @@ function stateupdate!(haircell::HairCell)
   leak_current = (haircell.potential[] - haircell.resting_potential)/
                                                    haircell.resistance
   # channel current
-  haircell.current[] = (haircell.potential[]-haircell.equilibrium_potential)*
+  haircell.current[] = (haircell.potential[]-haircell.reversal_potential)*
                                                                  conductance
-  # receptor potential
-  haircell.potential[] += haircell.resting_potential -
-                         dt*(leak_current + haircell.current[])/
-                                                 haircell.capacitance
 
+  # receptor potential
+  haircell.potential[] -= dt*(leak_current +haircell.current[])/haircell.capacitance
+#+ haircell.current[]
 end
 
 #  Some neurons
 # Hair cell
-const haircell_resting_potential = -0.06 # -60mV (Corey and Hudspeth 1979)
-const haircell_input_resistance  = 2.5e8  # 250Mohm (Corey and Hudspeth 1979)
-const haircell_capacitance = 3.0e-8 # 30pF (Roberts, Howard and Hudspeth, 1988)
-const haircell_transduction_reversal_potential = -0.002 # -2mv (C&H 1979)
-haircell = construct_haircell(haircell_resting_potential,
-                            haircell_input_resistance,
-                            haircell_capacitance,
-                            haircell_transduction_reversal_potential,
-                            p_open(0.0))
+
+haircell = construct_haircell(0.0)
 
 
 """
@@ -250,7 +248,7 @@ receptor_current_trace = fill(0.0f0, maxTime+1)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
          lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
-receptor_current_axis.limits[] = FRect(0., -15., 1001., 16.)
+receptor_current_axis.limits[] = FRect(0., -4.0e-10, 1001., 5.0e-10)
 
 # receptor_potential
 timeseries_layout[2,1] = receptor_potential_axis = CleanAxis(scene)
@@ -262,7 +260,7 @@ lines!(receptor_potential_axis,
 receptor_potential_plothandle =
          lines!(receptor_potential_axis, t, receptor_potential_trace,
                 color = :darkcyan)
-receptor_potential_axis.limits[] = FRect(0., -42.0, 1001., 12.0)
+receptor_potential_axis.limits[] = FRect(0., -0.065, 1001., 0.065)
 
 # afferent spike train axis
 timeseries_layout[3,1] = spike_axis = CleanAxis(scene)
@@ -415,11 +413,11 @@ end
 
 
 #
-# function afferentNeuron(u, mu, lambda, tau)
-#   # Integrate and fire with
-#
-#
-# end
+function exwaldNeuron(u, mu, lambda, tau)
+  # Integrate and fire with
+
+
+end
 
 # animate gate states
 # gates flicker open (yellow) and closed (blue)
@@ -437,10 +435,9 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   stateupdate!(haircell)
   threshold = 250.
 
-  p = .3
 
   # Exwald neuron
-  spike = (rand(1)[]< 0.01*p) ? Float32(1.0) : Float32(0.0)
+  spike = (rand(1)[]< 0.01*haircell.p_open[]) ? Float32(1.0) : Float32(0.0)
 
 
   # entropies
@@ -483,8 +480,6 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
   receptor_current_plothandle[2]   = receptor_current_trace
   receptor_potential_plothandle[2] = receptor_potential_trace
   spike_plothandle[2]              = spike_trace
-
-  @printf("%.2f, %.2f\n", haircell.current[], haircell.potential[])
 
   yield() # allow other processes to run
 end
