@@ -20,7 +20,7 @@ const T  = 300.      # temperature K
 const z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
 const d  = 3.5e-9    # Gate swing distance 3.5nm
 const pᵣ = 0.15      # resting/spontaneous open state probability
-const nm = 1e-9      # nanometer conversion factor
+const nano = Float32(1e-9)     #  conversion factor
 
 const haircell_resting_potential = -0.06 # -60mV (Corey and Hudspeth 1979)
 const haircell_input_resistance  = 2.5e8  # 250Mohm (Corey and Hudspeth 1979)
@@ -107,14 +107,12 @@ end
 function stateupdate!(haircell::HairCell)
 
   global dt  # not necessary if dt is const, but documents where dt comes from
-  global nm  # ditto
+  global nano  # ditto
 
   # random (Normal) Brownian perturbation to deflection, RMS 2nm
-  haircell.Δk[] = (kinocilium_slider.value[] + 2.0f0*randn(Float32,1)[])*nm
+  haircell.Δk[] = (kinocilium_slider.value[] + 2.0f0*randn(Float32,1)[])*nano
 
   haircell.p_open[] = p_open(haircell.Δk[])  # gate open probability
-
-
 
   haircell.gateOpen[:] = rand(48) .< haircell.p_open[]     # gate states
 
@@ -145,20 +143,18 @@ haircell = construct_haircell(0.0)
 """
 function sample_entropy(sample)
 
- entropy = 1.0
 
-  # # empirical pdf
-  # D = histogram(sample, nbins=20)
-  # n = length(D.weights)
-  # b = collect(D.edges[1])
-  # w = sum(D.weights)
-  # println(w)
-  # pdf = D.weights./w
-  #
-  # # bins with non-zero frequencies
-  # inonzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
-  #
-  # entropy = -sum(pdf[inonzero].*log.(2, pdf[inonzero]))
+  # empirical pdf
+  D = histogram(sample, nbins=12)
+  n = length(D.weights)
+  b = collect(D.edges[1])
+  w = sum(D.weights)
+  pdf = D.weights./w
+
+  # bins with non-zero frequencies
+  inonzero = findall(x-> x>1.0e-6 && x<(1.0-1.0e-6), pdf)
+
+  entropy = -sum(pdf[inonzero].*log.(2, pdf[inonzero]))
 
   return entropy
 end
@@ -172,7 +168,7 @@ CleanAxis(scene) = LAxis(scene,
                           titlevisible = false,
                           xticksvisible = false,
                           xticklabelsvisible = false,
-                          xlabelvisible = true,
+                          xlabelvisible = false,
                           yticksvisible = false,
                           yticklabelsvisible = false,
                           ylabelvisible = false,
@@ -190,7 +186,7 @@ scene_layout = GridLayout(scene, 2, 1,
 #    left for hair cell animation
 #    right for Exwald model interface
 controlpanel_layout = GridLayout(1,3,
-        colsizes = [Relative(.15), Relative(.7), Relative(.15)])
+        colsizes = [Relative(.1), Relative(.8), Relative(.1)])
 
 # Hair cell animation pane
 haircell_animation_layout= GridLayout(2,1, rowsizes = [Relative(.025), Relative(.975)])
@@ -201,7 +197,7 @@ hc_animation_axis.ylabel = "Open Probability"
 hc_animation_axis.xgridvisible = false
 hc_animation_axis.ygridvisible = false
 # plot open state probability as a function of kinocilium deflection
-lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nm),
+lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nano),
            linewidth =4,
            color = :darkcyan,
            leg = false,
@@ -242,17 +238,33 @@ timeseries_layout = GridLayout(3,1,
                     rowsizes = [Relative(.33), Relative(.34), Relative(.33)])
 
 # receptor current
-timeseries_layout[1,1] = receptor_current_axis = CleanAxis(scene)
-receptor_current_axis.xlabel = "receptor current"
+timeseries_layout[1,1] = receptor_current_axis = LAxis(scene,
+                          titlevisible = false,
+                          xticksvisible = false,
+                          xticklabelsvisible = false,
+                          xlabelvisible = true,
+                          yticksvisible = true,
+                          yticklabelsvisible = true,
+                          ylabelvisible = false,
+                          )
+receptor_current_axis.xlabel = "receptor current  /nA"
 receptor_current_trace = fill(0.0f0, maxTime+1)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
          lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
-receptor_current_axis.limits[] = FRect(0., -4.0e-10, 1001., 5.0e-10)
+receptor_current_axis.limits[] = FRect(0., -4.0e-1, 1001., 5.0e-1)
 
 # receptor_potential
-timeseries_layout[2,1] = receptor_potential_axis = CleanAxis(scene)
-receptor_potential_axis.xlabel = "receptor potential"
+timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
+                          titlevisible = false,
+                          xticksvisible = false,
+                          xticklabelsvisible = false,
+                          xlabelvisible = true,
+                          yticksvisible = true,
+                          yticklabelsvisible = true,
+                          ylabelvisible = false,
+                          )
+receptor_potential_axis.xlabel = "receptor potential /V"
 receptor_resting_potential = -40.0f0   # resting receptor potential
 receptor_potential_trace = fill(receptor_resting_potential, maxTime+1)
 lines!(receptor_potential_axis,
@@ -413,9 +425,12 @@ end
 
 
 #
-function exwaldNeuron(u, mu, lambda, tau)
-  # Integrate and fire with
+function exwaldSample(μ, λ, τ)
+  # generates a sample from Exwald distribution
 
+  μ = maximum([μ 1.e-3])
+
+  return rand(InverseGaussian(μ,λ)) + rand(Exponential(τ))
 
 end
 
@@ -424,33 +439,44 @@ end
 # WARNING: These graphical objects (including callbacks) persist
 #          unless scene is closed before re-running the script
 framecount = 0
+sweepCount = 0
+sum_current_entropy = 0.0
+sum_potential_entropy = 0.0
 X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
 
 # main simulation loop
+interval = 0.0
 @async while isopen(scene) # run this block as parallel thread
                        # while scene (window) is open
   #
   global framecount = framecount + 1
+  global interval
+
 
   stateupdate!(haircell)
   threshold = 250.
 
-
   # Exwald neuron
-  spike = (rand(1)[]< 0.01*haircell.p_open[]) ? Float32(1.0) : Float32(0.0)
-
+  interval -= dt  # time to next spike
+  spike = (interval <=0) ? true : false
+  if spike
+    μ = (1.0/3000.0)/(haircell.potential[] - haircell.resting_potential)
+    interval += exwaldSample(μ, 1.0, .005)
+  end
 
   # entropies
   if framecount > 1000
-
-      current_entropy   = sample_entropy(receptor_current_trace)
+      global sweepCount = sweepCount + 1
+      current_entropy   = sample_entropy(receptor_current_trace*1.0e6)
+      global sum_current_entropy += current_entropy
       potential_entropy = sample_entropy(receptor_potential_trace)
+      global sum_potential_entropy += potential_entropy
       spike_entropy     = sample_entropy(spike_trace)
 
-      # @printf("Entropy: %.2f, %.2f, %.2f\n",
-      #                       current_entropy,
-      #                       potential_entropy,
-      #                       spike_entropy)
+      @printf("Entropy: %.2f, %.2f, %.2f\n",
+                            sum_current_entropy/sweepCount,
+                            sum_potential_entropy/sweepCount,
+                            spike_entropy)
 
       # for i in 1:n
       #     X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
@@ -462,8 +488,8 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
 
 
   # update display
-  movegon(kinocilium_handle, 1, kcx0+haircell.Δk[]*hairScale/nm, kcy0)
-  movegon(tracker_handle, 1, haircell.Δk[]/nm, haircell.p_open[])
+  movegon(kinocilium_handle, 1, kcx0+haircell.Δk[]*hairScale/nano, kcy0)
+  movegon(tracker_handle, 1, haircell.Δk[]/nano, haircell.p_open[])
 
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
@@ -471,9 +497,9 @@ X = fill(Point2f0(0.,0.), 40)  # buffer for distribution data
 
 
   # shift display buffers left, insert new values on right
-  shiftinsert(receptor_current_trace, haircell.current[] )
+  shiftinsert(receptor_current_trace, haircell.current[]/nano )
   shiftinsert(receptor_potential_trace, Float32(haircell.potential[]) )
-  shiftinsert(spike_trace, spike )
+  shiftinsert(spike_trace, Float32(spike) )
 
   # update signal traces on display
   # nb the plot handles are observables, which trigger a redraw when they change
