@@ -58,6 +58,35 @@ const xRange =  kᵦ*T*log( (1-pRange)/pRange)/z
 p_open(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
 
 """
+  # Sample from Exwald density
+"""
+function exwaldSample(μ, λ, τ)
+
+  μ = maximum([μ 1.e-3])
+
+  return rand(InverseGaussian(μ,λ)) + rand(Exponential(τ))
+
+end
+
+"""
+  # Exwald probability density function
+"""
+function exwaldpdf(μ, λ, τ, x)
+
+    n = length(x)
+    dx = x[2]-x[1]  # assuming equal spacing
+    e = pdf.(Exponential(τ), x)
+    w = pdf.(InverseGaussian(μ,λ), x)
+    c = zeros(n)
+    for i in 1:n
+      for j in 1:i-1
+        c[i] = c[i] + e[i-j]*w[j]
+      end
+    end
+    return c./(sum(c)*dx)
+end
+
+"""
  # Hair cell type
 """
 struct HairCell
@@ -158,16 +187,6 @@ end
 #
 #**************************************************************
 
-CleanAxis(scene) = LAxis(scene,
-                          titlevisible = false,
-                          xticksvisible = false,
-                          xticklabelsvisible = false,
-                          xlabelvisible = false,
-                          yticksvisible = false,
-                          yticklabelsvisible = false,
-                          ylabelvisible = false,
-                          )
-
 # Scene with 2 panels:
 #    upper panel for GUI and animation control
 #    lower panel for time series plots
@@ -176,19 +195,19 @@ scene_layout = GridLayout(scene, 2, 1,
                     rowsizes = [Relative(0.5), Relative(0.5)],
                     alignmode = Outside(30, 30, 30, 30))
 
-
-
 # Control panel has 2 columns
 #    left for hair cell animation
 #    right for Exwald model interface
 controlpanel_layout = GridLayout(1,2,
-        colsizes = [Relative(.6), Relative(.4)])
+        colsizes = [Relative(.55), Relative(.45)])
 
 # Hair cell animation pane
-haircell_animation_layout= GridLayout(2,1, rowsizes = [Relative(.025), Relative(.975)])
-haircell_animation_layout[2, 1] = hc_animation_axis = LAxis(scene)
-controlpanel_layout[1,1] = haircell_animation_layout
-hc_animation_axis.xlabel  = "Deflection /nm"
+haircell_animation_layout= GridLayout(3,3,
+                colsizes = [Relative(.025), Relative(.95), Relative(.025)],
+                rowsizes = [Relative(.025), Relative(.025), Relative(.95)])
+haircell_animation_layout[3, 1:3] = hc_animation_axis = LAxis(scene)
+
+hc_animation_axis.xlabel  = "Kinocilium deflection Δk   (nm)"
 hc_animation_axis.ylabel = "Open Probability"
 hc_animation_axis.xgridvisible = false
 hc_animation_axis.ygridvisible = false
@@ -203,39 +222,46 @@ lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nano),
 kinocilium_slider  = LSlider(scene,
                     range = LinRange(min_deflect, max_deflect, 100)
                   )
-haircell_animation_layout[1,1] = kinocilium_slider
-
+haircell_animation_layout[2,2] = kinocilium_slider
+haircell_animation_layout[1, 2] = LText(scene,
+        "HAIR CELL MECHANOSENSORY TRANSDUCTION CHANNELS", textsize = 14)
+haircell_animation_layout[2, 1] = LText(scene, "Δk", textsize = 20)
+controlpanel_layout[1,1] = haircell_animation_layout
 # GUI for Exwald model
 #   located in right sub-panel of control panel
 #   2 sliders (log tau, log lambda) in upper sub-layout
 #   Exwald pdf in lower sub-layout
-exwald_layout = GridLayout(3,1,
-                  rowsizes = [Relative(.05), Relative(.05), Relative(.9)])
+exwald_layout = GridLayout(4,3,
+                  colsizes = [Relative(.025), Relative(.875), Relative(.1)],
+                  rowsizes = [Relative(.025), Relative(.025),
+                              Relative(.025), Relative(.9)])
 
-exwald_layout[1,1] = tau_slider = LSlider(scene, range=LinRange(-2.0, 2.0, 101))
-exwald_layout[2,1] = lam_slider = LSlider(scene, range=LinRange(2.0, 4.0, 101))
+exwald_layout[1,1:3] = LText(scene,
+                       "AFFERENT INTER-SPIKE INTERVAL DENSITY (EXWALD)",
+                             textsize = 14)
+exwald_layout[2,2] = tau_slider = LSlider(scene, range=LinRange(-2.0, 2.0, 101))
+tau_slider.value[] = 0.0
+exwald_layout[3,2] = lam_slider = LSlider(scene, range=LinRange(2.0, 4.0, 101))
 
-#
-# exwald_layout[2,1] = lambda_slider =
-#                      LSlider(scene, range = LinRange(0.0, 5.0, 100))
-# exwald_layout[3,1] = exwald_axis = LAxis(scene)
-# exwald_axis.xlabel = "ISI Distribution"
-# exwald_axis.xgridvisible = false
-# exwald_axis.ygridvisible = false
-
-exwald_layout[3,1]= exwald_plot_axis = LAxis(scene)
-exwald_plot_axis.xlabel = "Interval /ms"
+exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
+                                        yticksvisible = false,
+                                        yticklabelsvisible = false)
+exwald_plot_axis.xlabel = "Interval (ms)"
 exwald_plot_axis.ylabel = "probability density"
-
-
+exwald_x = collect(0.0:.5:100.0)
+exwald_pdf = exwaldpdf( 12.0,
+                        10.0^lam_slider.value[],
+                        10.0^tau_slider.value[],
+                        exwald_x)
+exwald_pdf_plothandle = plot!(exwald_plot_axis, exwald_x, exwald_pdf )
+exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
+exwald_layout[2,3] = LText(scene, "1.002", textsize = 12)
+exwald_plot_axis.limits[] = FRect(0.0, 0.0, 100.0, 0.25)
+exwald_layout[3,1] = LText(scene, "λ", textsize = 20)
 controlpanel_layout[1,2] = exwald_layout
-
-
-
 
 # insert control panel in scene
 scene_layout[1,1] = controlpanel_layout
-
 
 # time series plot pane
 timeseries_layout = GridLayout(3,1,
@@ -243,52 +269,52 @@ timeseries_layout = GridLayout(3,1,
 
 # receptor current
 timeseries_layout[1,1] = receptor_current_axis = LAxis(scene,
-                          titlevisible = true,
+                          titlevisible = false,
                           xticksvisible = false,
                           xticklabelsvisible = false,
-                          xlabelvisible = false,
+                          xlabelvisible = true,
                           yticksvisible = true,
                           yticklabelsvisible = true,
                           ylabelvisible = false,
                           )
-receptor_current_axis.title = "receptor current  /nA"
+receptor_current_axis.xlabel = "receptor current  (nA)"
 receptor_current_trace = fill(0.0f0, maxTime+1)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
-         lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
+         lines!(receptor_current_axis, t,
+                   receptor_current_trace, color = :darkcyan)
 receptor_current_axis.limits[] = FRect(0., -4.0e-1, 1001., 5.0e-1)
 
 # receptor_potential
 timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
-                          titlevisible = true,
+                          titlevisible = false,
                           xticksvisible = false,
                           xticklabelsvisible = false,
-                          xlabelvisible = false,
+                          xlabelvisible = true,
                           yticksvisible = true,
                           yticklabelsvisible = true,
                           ylabelvisible = false,
                           )
-receptor_potential_axis.title = "receptor potential /V"
-receptor_resting_potential = -40.0f0   # resting receptor potential
+receptor_potential_axis.xlabel = "receptor potential (mV)"
 receptor_potential_trace = fill(receptor_resting_potential, maxTime+1)
 lines!(receptor_potential_axis,
-       t, receptor_resting_potential*ones(length(t)), color = :darkred)
+       t, 1000.0*haircell_resting_potential*ones(length(t)), color = :darkred)
 receptor_potential_plothandle =
          lines!(receptor_potential_axis, t, receptor_potential_trace,
                 color = :darkcyan)
-receptor_potential_axis.limits[] = FRect(0., -0.065, 1001., 0.065)
+receptor_potential_axis.limits[] = FRect(0., -65.0, 1001., 65.0)
 
 # afferent spike train axis
 timeseries_layout[3,1] = spike_axis = LAxis(scene,
-                          titlevisible = true,
+                          titlevisible = false,
                           xticksvisible = false,
                           xticklabelsvisible = false,
-                          xlabelvisible = false,
-                          yticksvisible = true,
-                          yticklabelsvisible = true,
+                          xlabelvisible = true,
+                          yticksvisible = false,
+                          yticklabelsvisible = false,
                           ylabelvisible = false,
                           )
-spike_axis.title = "afferent spike train"
+spike_axis.xlabel = "afferent spike train (100ms)"
 spike_trace = fill(0.0f0, maxTime+1)
 spike_plothandle =
          lines!(spike_axis, t, spike_trace,
@@ -329,7 +355,7 @@ function scattergon(ax, x, y, n;
     axlim = decompose(Point2f0, ax.limits[])
     xlim = axlim[4][1] - axlim[1][1]
     ylim = axlim[4][2] - axlim[1][2]
-    aspect = 1.4*ylim/xlim
+    aspect = 1.5*ylim/xlim
 
     ngonx = [0.5*markersize*cos(2.0*π*i/n) for i in 1:n]
     ngony = [0.5*markersize*aspect*sin(2.0*π*i/n) for i in 1:n]
@@ -372,7 +398,7 @@ end
 function drawHairCell(panel, x0,y0, state)
 
   dx = 75.
-  dy = .05
+  dy = .065
 
   # kinocilium, drawn in scene at (x0, y0)
   # outline (stays in place)
@@ -437,14 +463,7 @@ end
 
 
 #
-function exwaldSample(μ, λ, τ)
-  # generates a sample from Exwald distribution
 
-  μ = maximum([μ 1.e-3])
-
-  return rand(InverseGaussian(μ,λ)) + rand(Exponential(τ))
-
-end
 
 # animate gate states
 # gates flicker open (yellow) and closed (blue)
@@ -464,6 +483,12 @@ interval = 0.0
   global framecount = framecount + 1
   global interval
 
+  exwald_pdf = exwaldpdf( 12.0,
+                          10.0^lam_slider.value[],
+                          10.0^tau_slider.value[],
+                          exwald_x)
+
+  exwald_pdf_plothandle[2] = exwald_pdf
 
   haircell_stateupdate!(haircell, kinocilium_slider.value[])
   threshold = 250.
@@ -510,7 +535,7 @@ interval = 0.0
 
   # shift display buffers left, insert new values on right
   shiftinsert(receptor_current_trace, haircell.current[]/nano )
-  shiftinsert(receptor_potential_trace, Float32(haircell.potential[]) )
+  shiftinsert(receptor_potential_trace, Float32(1000.0*haircell.potential[]) )
   shiftinsert(spike_trace, Float32(spike) )
 
   # update signal traces on display
