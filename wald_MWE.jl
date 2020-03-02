@@ -21,16 +21,32 @@ wald_plot_axis.ylabel = "probability density"
 
 scene_layout[2,1] = wald_layout
 
+<<<<<<< Updated upstream
 function waldpdf(μ, λ, x)
 
     return pdf.(InverseGaussian(10.0^μ,10.0^λ), x)
+=======
+function waldpdf(log_μλ, x)
+
+
+   μ = 10.0^log_μλ[1]
+   λ = 10.0^log_μλ[2]
+
+    return pdf.(InverseGaussian(μ,λ), x)
+>>>>>>> Stashed changes
 end
 
 
 wald_x = collect(0.0:.5:100.0)
 
+<<<<<<< Updated upstream
 exwald_pdf_plothandle = plot!(wald_plot_axis, wald_x,
                   lift((x,y) ->  waldpdf( x, y, wald_x),
                   tau_slider.value, lam_slider.value ) )
+=======
+q = Node((tau_slider.value[], lam_slider.value[]))
+exwald_pdf_plothandle = plot!(wald_plot_axis, wald_x,
+                  lift(x ->  waldpdf( x, wald_x),  q ) )
+>>>>>>> Stashed changes
 
 RecordEvents(scene, "output")
