@@ -37,6 +37,8 @@ const kcy0 = 0.6   # ""
 const pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
 const hairScale = 0.05 # scale deflection from plot to gate state animation
 const maxTime = 1000   # duration of time series plots (haircell state and spikes)
+BGcolor = RGB(.995, .995, .95)
+SCcolor = RGB(.95, .95, .95)
 
 const min_deflect = -500.0
 const max_deflect = 1000.0
@@ -85,30 +87,7 @@ function exwaldpdf(μ, λ, τ, x)
     return c./(sum(c)*dx)
 end
 
-# """
-#   # Exwald probability density function
-#   # with tuple ( log(λ), log(τ) ) as 2nd parameter
-#   # kluge for controlling exwald plot with 2 sliders
-# """
-# function exwaldpdf(μ, log_λτ, x)
-#
-#   println(log_λτ)
-#
-#    λ = 10.0^log_λτ[1]
-#    τ = 10.0^log_λτ[2]
-#
-#     n = length(x)
-#     dx = x[2]-x[1]  # assuming equal spacing
-#     e = pdf.(Exponential(τ), x)
-#     w = pdf.(InverseGaussian(μ,λ), x)
-#     c = zeros(n)
-#     for i in 1:n
-#       for j in 1:i-1
-#         c[i] = c[i] + e[i-j]*w[j]
-#       end
-#     end
-#     return c./(sum(c)*dx)
-# end
+
 
 """
  # Hair cell type
@@ -218,6 +197,7 @@ scene = Scene(resolution = (1000,800), camera=campixel!)
 scene_layout = GridLayout(scene, 2, 1,
                     rowsizes = [Relative(0.5), Relative(0.5)],
                     alignmode = Outside(30, 30, 30, 30))
+scene.backgroundcolor[] = SCcolor
 
 # Control panel has 2 columns
 #    left for hair cell animation
@@ -230,7 +210,7 @@ haircell_animation_layout= GridLayout(3,3,
                 colsizes = [Relative(.025), Relative(.95), Relative(.025)],
                 rowsizes = [Relative(.025), Relative(.025), Relative(.95)])
 haircell_animation_layout[3, 1:3] = hc_animation_axis = LAxis(scene)
-
+hc_animation_axis.backgroundcolor[] = BGcolor
 hc_animation_axis.xlabel  = "Kinocilium deflection Δk   (nm)"
 hc_animation_axis.ylabel = "Open Probability"
 hc_animation_axis.xgridvisible = false
@@ -260,33 +240,45 @@ exwald_layout = GridLayout(4,3,
                   rowsizes = [Relative(.025), Relative(.025),
                               Relative(.025), Relative(.9)])
 
+# EXWALD MODEL CONTROL PANEL (TOP RIGHT)
 exwald_layout[1,1:3] = LText(scene,
-                       "AFFERENT INTER-SPIKE INTERVAL DENSITY (EXWALD)",
-                             textsize = 14)
+         "AFFERENT INTER-SPIKE INTERVAL DENSITY (EXWALD)", textsize = 14)
+
+# τ slider
+exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
 exwald_layout[2,2] = tau_slider = LSlider(scene, range=LinRange(-2.0, 2.0, 101))
 tau_slider.value[] = 0.0
-exwald_layout[3,2] = lam_slider = LSlider(scene, range=LinRange(-1.0, 1.0, 101))
+exwald_layout[2,3] = LText(scene, lift(x->@sprintf("%.2f", 10.0^x),
+                    tau_slider.value), textsize = 14)
+
+# λ slider
+exwald_layout[3,1] = LText(scene, "λ", textsize = 20)
+exwald_layout[3,2] = lam_slider = LSlider(scene,
+                                  range=LinRange(2.0, 4.0, 101),
+                                  startvalue = 3.5)
+exwald_layout[3,3] = LText(scene, lift(x->@sprintf("%.0f", 10.0^x),
+                           lam_slider.value), textsize = 14)
+
+
+# plot of exwald distribution with parameters from sliders
 exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
-                                        yticksvisible = false,
-                                        yticklabelsvisible = false)
+                      yticksvisible = false, yticklabelsvisible = false)
+# exwald_plot_axis.limits[]  =FRect(0.0, 0.0, 60.0, 1.0)
+exwald_plot_axis.backgroundcolor[] = BGcolor
 exwald_plot_axis.xlabel = "Interval (ms)"
 exwald_plot_axis.ylabel = "probability density"
-exwald_x = collect(0.0:.5:50.0)
+exwald_x = collect(0.0:.25:50.0)
 
-#  two sliders control exwald parameters &
-# update plot interactively
+#  two sliders control exwald parameters & update plot interactively
 exwald_pdf_plothandle = plot!(exwald_plot_axis,
                 exwald_x, lift((x,y) ->
                 exwaldpdf( 12.0, 10.0^x, 10.0^y, exwald_x),
                  lam_slider.value, tau_slider.value ) )
 
-exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
-exwald_layout[2,3] = LText(scene, "1.002", textsize = 12)
-exwald_plot_axis.limits[] = FRect(0.0, 0.0, 50.0, 0.25)
-exwald_layout[3,1] = LText(scene, "λ", textsize = 20)
+# insert exwald panel into control panel
 controlpanel_layout[1,2] = exwald_layout
 
-# insert control panel in scene
+# insert control panel into scene
 scene_layout[1,1] = controlpanel_layout
 
 # time series plot pane
@@ -303,6 +295,7 @@ timeseries_layout[1,1] = receptor_current_axis = LAxis(scene,
                           yticklabelsvisible = true,
                           ylabelvisible = false,
                           )
+receptor_current_axis.backgroundcolor[] = BGcolor
 receptor_current_axis.xlabel = "receptor current  (nA)"
 receptor_current_trace = fill(0.0f0, maxTime+1)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
@@ -321,6 +314,7 @@ timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
                           yticklabelsvisible = true,
                           ylabelvisible = false,
                           )
+receptor_potential_axis.backgroundcolor[] = BGcolor
 receptor_potential_axis.xlabel = "receptor potential (mV)"
 receptor_potential_trace = fill(haircell_resting_potential, maxTime+1)
 lines!(receptor_potential_axis,
@@ -340,6 +334,7 @@ timeseries_layout[3,1] = spike_axis = LAxis(scene,
                           yticklabelsvisible = false,
                           ylabelvisible = false,
                           )
+spike_axis.backgroundcolor[] = BGcolor
 spike_axis.xlabel = "afferent spike train (100ms)"
 spike_trace = fill(0.0f0, maxTime+1)
 spike_plothandle =
