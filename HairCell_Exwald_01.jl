@@ -22,19 +22,18 @@ const d  = 3.5e-9    # Gate swing distance 3.5nm
 const pᵣ = 0.15      # resting/spontaneous open state probability
 const nano = Float32(1e-9)     #  conversion factor
 
-const haircell_resting_potential = -0.06 # -60mV (Corey and Hudspeth 1979)
+const haircell_resting_potential = Float32(-0.06) # -60mV (Corey and Hudspeth 1979)
 const haircell_input_resistance  = 2.5e8  # 250Mohm (Corey and Hudspeth 1979)
 const haircell_capacitance = 3.0e-11 # 30pF (Roberts, Howard and Hudspeth, 1988)
-const haircell_transduction_reversal_potential = -0.002 # -2mv (C&H 1979)
+const haircell_transduction_reversal_potential = Float32(-.002) # -2mv (C&H 1979)
 const haircell_single_channel_conductance = Float32(500.e-12) # Geleoc &c 1997
-const haircell_channel_reversal_potential = Float32(-.002) # c&H?
 
 # simulation parameters
 const dt = 1.0e-4    # 100 microsecond steps
 
 # plot parameters
-# const kcx0 = 60.   # location of kinocilium in scene (pixels from BL)
-# const kcy0 = 0.6   # ""
+const kcx0 = 60.   # location of kinocilium in animation axis
+const kcy0 = 0.6   # ""
 const pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
 const hairScale = 0.05 # scale deflection from plot to gate state animation
 const maxTime = 1000   # duration of time series plots (haircell state and spikes)
@@ -72,6 +71,31 @@ end
   # Exwald probability density function
 """
 function exwaldpdf(μ, λ, τ, x)
+
+    n = length(x)
+    dx = x[2]-x[1]  # assuming equal spacing
+    e = pdf.(Exponential(τ), x)
+    w = pdf.(InverseGaussian(μ,λ), x)
+    c = zeros(n)
+    for i in 1:n
+      for j in 1:i-1
+        c[i] = c[i] + e[i-j]*w[j]
+      end
+    end
+    return c./(sum(c)*dx)
+end
+
+"""
+  # Exwald probability density function
+  # with tuple ( log(λ), log(τ) ) as 2nd parameter
+  # kluge for controlling exwald plot with 2 sliders
+"""
+function exwaldpdf(μ, log_λτ, x)
+
+  println(log_λτ)
+
+   λ = 10.0^log_λτ[1]
+   τ = 10.0^log_λτ[2]
 
     n = length(x)
     dx = x[2]-x[1]  # assuming equal spacing
@@ -125,7 +149,7 @@ function HairCell(resting_potential)
                     haircell_capacitance,
                     48,
                     haircell_single_channel_conductance,
-                    haircell_channel_reversal_potential)
+                    haircell_transduction_reversal_potential)
 end
 
 """
@@ -242,7 +266,6 @@ exwald_layout[1,1:3] = LText(scene,
 exwald_layout[2,2] = tau_slider = LSlider(scene, range=LinRange(-2.0, 2.0, 101))
 tau_slider.value[] = 0.0
 exwald_layout[3,2] = lam_slider = LSlider(scene, range=LinRange(2.0, 4.0, 101))
-
 exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
                                         yticksvisible = false,
                                         yticklabelsvisible = false)
@@ -253,7 +276,14 @@ exwald_pdf = exwaldpdf( 12.0,
                         10.0^lam_slider.value[],
                         10.0^tau_slider.value[],
                         exwald_x)
-exwald_pdf_plothandle = plot!(exwald_plot_axis, exwald_x, exwald_pdf )
+
+q = Node((tau_slider.value[], lam_slider.value[]))
+exwald_pdf_plothandle = plot!(exwald_plot_axis,
+                              exwald_x,
+                              lift(x ->
+                              exwaldpdf( 12.0, x, exwald_x),
+                              q )
+                              )
 exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
 exwald_layout[2,3] = LText(scene, "1.002", textsize = 12)
 exwald_plot_axis.limits[] = FRect(0.0, 0.0, 100.0, 0.25)
@@ -296,7 +326,7 @@ timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
                           ylabelvisible = false,
                           )
 receptor_potential_axis.xlabel = "receptor potential (mV)"
-receptor_potential_trace = fill(receptor_resting_potential, maxTime+1)
+receptor_potential_trace = fill(haircell_resting_potential, maxTime+1)
 lines!(receptor_potential_axis,
        t, 1000.0*haircell_resting_potential*ones(length(t)), color = :darkred)
 receptor_potential_plothandle =
@@ -483,12 +513,16 @@ interval = 0.0
   global framecount = framecount + 1
   global interval
 
+
+
   exwald_pdf = exwaldpdf( 12.0,
                           10.0^lam_slider.value[],
                           10.0^tau_slider.value[],
                           exwald_x)
 
   exwald_pdf_plothandle[2] = exwald_pdf
+
+
 
   haircell_stateupdate!(haircell, kinocilium_slider.value[])
   threshold = 250.
