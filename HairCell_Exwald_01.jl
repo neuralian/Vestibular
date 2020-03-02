@@ -85,30 +85,30 @@ function exwaldpdf(μ, λ, τ, x)
     return c./(sum(c)*dx)
 end
 
-"""
-  # Exwald probability density function
-  # with tuple ( log(λ), log(τ) ) as 2nd parameter
-  # kluge for controlling exwald plot with 2 sliders
-"""
-function exwaldpdf(μ, log_λτ, x)
-
-  println(log_λτ)
-
-   λ = 10.0^log_λτ[1]
-   τ = 10.0^log_λτ[2]
-
-    n = length(x)
-    dx = x[2]-x[1]  # assuming equal spacing
-    e = pdf.(Exponential(τ), x)
-    w = pdf.(InverseGaussian(μ,λ), x)
-    c = zeros(n)
-    for i in 1:n
-      for j in 1:i-1
-        c[i] = c[i] + e[i-j]*w[j]
-      end
-    end
-    return c./(sum(c)*dx)
-end
+# """
+#   # Exwald probability density function
+#   # with tuple ( log(λ), log(τ) ) as 2nd parameter
+#   # kluge for controlling exwald plot with 2 sliders
+# """
+# function exwaldpdf(μ, log_λτ, x)
+#
+#   println(log_λτ)
+#
+#    λ = 10.0^log_λτ[1]
+#    τ = 10.0^log_λτ[2]
+#
+#     n = length(x)
+#     dx = x[2]-x[1]  # assuming equal spacing
+#     e = pdf.(Exponential(τ), x)
+#     w = pdf.(InverseGaussian(μ,λ), x)
+#     c = zeros(n)
+#     for i in 1:n
+#       for j in 1:i-1
+#         c[i] = c[i] + e[i-j]*w[j]
+#       end
+#     end
+#     return c./(sum(c)*dx)
+# end
 
 """
  # Hair cell type
@@ -265,28 +265,24 @@ exwald_layout[1,1:3] = LText(scene,
                              textsize = 14)
 exwald_layout[2,2] = tau_slider = LSlider(scene, range=LinRange(-2.0, 2.0, 101))
 tau_slider.value[] = 0.0
-exwald_layout[3,2] = lam_slider = LSlider(scene, range=LinRange(2.0, 4.0, 101))
+exwald_layout[3,2] = lam_slider = LSlider(scene, range=LinRange(-1.0, 1.0, 101))
 exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
                                         yticksvisible = false,
                                         yticklabelsvisible = false)
 exwald_plot_axis.xlabel = "Interval (ms)"
 exwald_plot_axis.ylabel = "probability density"
-exwald_x = collect(0.0:.5:100.0)
-exwald_pdf = exwaldpdf( 12.0,
-                        10.0^lam_slider.value[],
-                        10.0^tau_slider.value[],
-                        exwald_x)
+exwald_x = collect(0.0:.5:50.0)
 
-q = Node((tau_slider.value[], lam_slider.value[]))
+#  two sliders control exwald parameters &
+# update plot interactively
 exwald_pdf_plothandle = plot!(exwald_plot_axis,
-                              exwald_x,
-                              lift(x ->
-                              exwaldpdf( 12.0, x, exwald_x),
-                              q )
-                              )
+                exwald_x, lift((x,y) ->
+                exwaldpdf( 12.0, 10.0^x, 10.0^y, exwald_x),
+                 lam_slider.value, tau_slider.value ) )
+
 exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
 exwald_layout[2,3] = LText(scene, "1.002", textsize = 12)
-exwald_plot_axis.limits[] = FRect(0.0, 0.0, 100.0, 0.25)
+exwald_plot_axis.limits[] = FRect(0.0, 0.0, 50.0, 0.25)
 exwald_layout[3,1] = LText(scene, "λ", textsize = 20)
 controlpanel_layout[1,2] = exwald_layout
 
@@ -512,17 +508,6 @@ interval = 0.0
   #
   global framecount = framecount + 1
   global interval
-
-
-
-  exwald_pdf = exwaldpdf( 12.0,
-                          10.0^lam_slider.value[],
-                          10.0^tau_slider.value[],
-                          exwald_x)
-
-  exwald_pdf_plothandle[2] = exwald_pdf
-
-
 
   haircell_stateupdate!(haircell, kinocilium_slider.value[])
   threshold = 250.
