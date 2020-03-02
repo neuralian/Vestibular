@@ -20,7 +20,15 @@ const T  = 300.      # temperature K
 const z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
 const d  = 3.5e-9    # Gate swing distance 3.5nm
 const pᵣ = 0.15      # resting/spontaneous open state probability
+<<<<<<< Updated upstream
 const nano = Float32(1e-9)     #  conversion factor
+=======
+const nm = 1e-9  # nanometers
+
+receptor_alpha = Float32(1e-1)
+receptor_channel_conductance = Float32(1.e-10) # 100 pS
+const receptor_reversal_potential = Float32(-2.0e-3) # Corey and Hudspeth 1979
+>>>>>>> Stashed changes
 
 const haircell_resting_potential = -0.06 # -60mV (Corey and Hudspeth 1979)
 const haircell_input_resistance  = 2.5e8  # 250Mohm (Corey and Hudspeth 1979)
@@ -93,8 +101,13 @@ function construct_haircell(resting_potential)
                     haircell_input_resistance,
                     haircell_capacitance,
                     48,
+<<<<<<< Updated upstream
                     haircell_single_channel_conductance,
                     haircell_channel_reversal_potential)
+=======
+                    receptor_channel_conductance,
+                    channel_equilibrium_potential)
+>>>>>>> Stashed changes
 end
 
 # some biophysics
@@ -252,7 +265,11 @@ receptor_current_trace = fill(0.0f0, maxTime+1)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
          lines!(receptor_current_axis, t, receptor_current_trace, color = :darkcyan)
+<<<<<<< Updated upstream
 receptor_current_axis.limits[] = FRect(0., -4.0e-1, 1001., 5.0e-1)
+=======
+receptor_current_axis.limits[] = FRect(0., -1.e-6, 1001., 1.0e-6)
+>>>>>>> Stashed changes
 
 # receptor_potential
 timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
