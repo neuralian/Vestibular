@@ -36,7 +36,7 @@ const kcx0 = 60.   # location of kinocilium in animation axis
 const kcy0 = 0.6   # ""
 const pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
 const hairScale = 0.05 # scale deflection from plot to gate state animation
-const maxTime = 1000   # duration of time series plots (haircell state and spikes)
+maxTime = 0.1   # duration of time series plots /s
 BGcolor = RGB(.995, .995, .95)
 SCcolor = RGB(.95, .95, .95)
 
@@ -45,7 +45,8 @@ const max_deflect = 1000.0
 const deflect_range = collect(min_deflect:max_deflect)
 
 # time series plot time base
-const t = collect(0:maxTime)
+const t = collect(0:dt:maxTime)
+numt = length(t)
 
 # solve p₀(x₀)= 1/2 (deflection when open state prob = 1/2)
 const x₀ =  kᵦ*T*log( (1-pᵣ)/pᵣ)/z
@@ -267,7 +268,7 @@ exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
 exwald_plot_axis.backgroundcolor[] = BGcolor
 exwald_plot_axis.xlabel = "Interval (ms)"
 exwald_plot_axis.ylabel = "probability density"
-exwald_x = collect(0.0:.25:50.0)
+exwald_x = collect(0.0:.025:50.0)
 
 #  two sliders control exwald parameters & update plot interactively
 exwald_pdf_plothandle = plot!(exwald_plot_axis,
@@ -282,7 +283,7 @@ controlpanel_layout[1,2] = exwald_layout
 scene_layout[1,1] = controlpanel_layout
 
 # time series plot pane
-timeseries_layout = GridLayout(3,1,
+scene_layout[2,1] = timeseries_layout = GridLayout(3,1,
                     rowsizes = [Relative(.33), Relative(.34), Relative(.33)])
 
 # receptor current
@@ -297,12 +298,12 @@ timeseries_layout[1,1] = receptor_current_axis = LAxis(scene,
                           )
 receptor_current_axis.backgroundcolor[] = BGcolor
 receptor_current_axis.xlabel = "receptor current  (nA)"
-receptor_current_trace = fill(0.0f0, maxTime+1)
+receptor_current_trace = fill(0.0f0, numt)
 lines!(receptor_current_axis, t, zeros(length(t)), color = :darkred)
 receptor_current_plothandle =
          lines!(receptor_current_axis, t,
                    receptor_current_trace, color = :darkcyan)
-receptor_current_axis.limits[] = FRect(0., -4.0e-1, 1001., 5.0e-1)
+receptor_current_axis.limits[] = FRect(0., -4.0e-1, maxTime, 5.0e-1)
 
 # receptor_potential
 timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
@@ -316,13 +317,18 @@ timeseries_layout[2,1] = receptor_potential_axis = LAxis(scene,
                           )
 receptor_potential_axis.backgroundcolor[] = BGcolor
 receptor_potential_axis.xlabel = "receptor potential (mV)"
-receptor_potential_trace = fill(haircell_resting_potential, maxTime+1)
+receptor_potential_trace = fill(haircell_resting_potential, numt)
 lines!(receptor_potential_axis,
-       t, 1000.0*haircell_resting_potential*ones(length(t)), color = :darkred)
+       t, 1000.0*haircell_resting_potential*ones(numt), color = :darkred)
+       #
+       # display(scene)
+       # sleep(5000)
 receptor_potential_plothandle =
          lines!(receptor_potential_axis, t, receptor_potential_trace,
                 color = :darkcyan)
-receptor_potential_axis.limits[] = FRect(0., -65.0, 1001., 65.0)
+receptor_potential_axis.limits[] = FRect(0., -65.0, maxTime, 65.0)
+
+
 
 # afferent spike train axis
 timeseries_layout[3,1] = spike_axis = LAxis(scene,
@@ -335,12 +341,12 @@ timeseries_layout[3,1] = spike_axis = LAxis(scene,
                           ylabelvisible = false,
                           )
 spike_axis.backgroundcolor[] = BGcolor
-spike_axis.xlabel = "afferent spike train (100ms)"
-spike_trace = fill(0.0f0, maxTime+1)
+spike_axis.xlabel = @sprintf("afferent spike train (%.2fs)", maxTime)
+spike_trace = fill(0.0f0, numt)
 spike_plothandle =
          lines!(spike_axis, t, spike_trace,
                 color = :darkcyan)
-spike_axis.limits[] = FRect(0., 0., 1001., 1.25)
+spike_axis.limits[] = FRect(0., 0., maxTime, 1.25)
 
 # # distributions
 # timeseries_layout[1, 1] = channel_distn_axis = CleanAxis(scene)
@@ -352,8 +358,7 @@ spike_axis.limits[] = FRect(0., 0., 1001., 1.25)
 # timeseries_layout[3, 1] = ISI_distn_axis = CleanAxis(scene)
 # ISI_distn_axis.xlabel = "H=0"
 
-# insert time series pane in scene
-scene_layout[2,1] = timeseries_layout
+
 
 display(scene)
 
@@ -515,29 +520,6 @@ interval = 0.0
     interval += exwaldSample(μ, 1.0, .005)
   end
 
-  # entropies
-  # if framecount > 1000
-  #     global sweepCount = sweepCount + 1
-  #     current_entropy   = sample_entropy(receptor_current_trace*1.0e6)
-  #     global sum_current_entropy += current_entropy
-  #     potential_entropy = sample_entropy(receptor_potential_trace)
-  #     global sum_potential_entropy += potential_entropy
-  #     spike_entropy     = sample_entropy(spike_trace)
-  #
-  #     @printf("Entropy: %.2f, %.2f, %.2f\n",
-  #                           sum_current_entropy/sweepCount,
-  #                           sum_potential_entropy/sweepCount,
-  #                           spike_entropy)
-  #
-  #     # for i in 1:n
-  #     #     X[i] = Point2f0((b[i]+b[i+1])/2., pdf[i])
-  #     # end
-  #     # channel_distn_histogram[1][] = X[1:n]
-  #     framecount = 0
-  # end
-
-
-
   # update display
   movegon(kinocilium_handle, 1, kcx0+haircell.Δk[]*hairScale/nano, kcy0)
   movegon(tracker_handle, 1, haircell.Δk[]/nano, haircell.p_open[])
@@ -545,7 +527,6 @@ interval = 0.0
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
         @inbounds [haircell.gateOpen[i] ? :gold1 : :dodgerblue1 for i in 1:48]
-
 
   # shift display buffers left, insert new values on right
   shiftinsert(receptor_current_trace, haircell.current[]/nano )
