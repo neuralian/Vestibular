@@ -15,6 +15,7 @@ using Printf
 
 
 # Hair cell biophysical parameters
+
 const kᵦ = 1.38e-23  # Boltzmann constant J/K or m^2 kg ^-2 K^-1
 const T  = 300.      # temperature K
 const z  = 40.e-15   # Gating force 40 fN (Howard, Roberts & Hudspeth 1988)
@@ -44,6 +45,7 @@ const min_deflect = -500.0
 const max_deflect = 1000.0
 const deflect_range = collect(min_deflect:max_deflect)
 
+
 # time series plot time base
 const t = collect(0:dt:maxTime)
 numt = length(t)
@@ -63,8 +65,6 @@ p_open(x) = 1.0./(1.0 .+ exp.(-z*(x.-x₀)/(kᵦ*T)))
   # Sample from Exwald density
 """
 function exwaldSample(μ, λ, τ)
-
-  μ = maximum([μ 1.e-3])
 
   return rand(InverseGaussian(μ,λ)) + rand(Exponential(τ))
 
@@ -272,9 +272,13 @@ exwald_x = collect(0.0:.025:50.0)
 
 #  two sliders control exwald parameters & update plot interactively
 exwald_pdf_plothandle = plot!(exwald_plot_axis,
-                exwald_x, lift((x,y) ->
-                exwaldpdf( 12.0, 10.0^x, 10.0^y, exwald_x),
-                 lam_slider.value, tau_slider.value ) )
+                exwald_x, lift((μ_control, λ_control, τ_control) ->
+                exwaldpdf( 1.9/p_open(μ_control*nano),
+                           10.0^λ_control,
+                           10.0^τ_control, exwald_x),
+                          kinocilium_slider.value,
+                          lam_slider.value,
+                          tau_slider.value ) )
 
 # insert exwald panel into control panel
 controlpanel_layout[1,2] = exwald_layout
@@ -347,17 +351,6 @@ spike_plothandle =
          lines!(spike_axis, t, spike_trace,
                 color = :darkcyan)
 spike_axis.limits[] = FRect(0., 0., maxTime, 1.25)
-
-# # distributions
-# timeseries_layout[1, 1] = channel_distn_axis = CleanAxis(scene)
-# channel_distn_axis.xlabel = "H=0"
-# channel_distn_histogram = plot!(channel_distn_axis, collect(1:10), zeros(10))
-# channel_distn_axis.limits[] = FRect(-1., 0., 51., 1.)
-# timeseries_layout[2, 1] = receptor_distn_axis = CleanAxis(scene)
-# receptor_distn_axis.xlabel = "H=0"
-# timeseries_layout[3, 1] = ISI_distn_axis = CleanAxis(scene)
-# ISI_distn_axis.xlabel = "H=0"
-
 
 
 display(scene)
@@ -517,7 +510,11 @@ interval = 0.0
   spike = (interval <=0) ? true : false
   if spike
     μ = (1.0/3000.0)/(haircell.potential[] - haircell.resting_potential)
-    interval += exwaldSample(μ, 1.0, .005)
+    # nb -3.0 in exponent because the sliders are calibrated in ms
+    #     but simulation time unit is second
+    interval += exwaldSample(μ,
+                            10.0^(lam_slider.value[]-3.0),
+                            10.0^(tau_slider.value[]-3.0) )
   end
 
   # update display
