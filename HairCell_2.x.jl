@@ -1,7 +1,7 @@
 # Interactive animation of vestibular hair cell transduction channel
 # gating as a function of kinocillium deflection
-# with stochastic integrate and fire (SIF) afferent model
-# Mike Paulin University of Otago 2019
+# with Exwald afferent model
+# Mike Paulin University of Otago 2020
 #
 
 
@@ -38,8 +38,16 @@ const kcy0 = 0.6   # ""
 const pRange = 1e-7  # range of probabilities to plot (pRange, 1-pRange)
 const hairScale = 0.05 # scale deflection from plot to gate state animation
 maxTime = 0.1   # duration of time series plots /s
-BGcolor = RGB(.995, .995, .95)
+BGcolor = RGB(.995, .995, .975)
 SCcolor = RGB(.95, .95, .95)
+open_color = :gold1
+closed_color = RGB(0.5, 0.75, .9)
+
+# exwald pdf compute range needs to extend over all possible interval lengths
+# (so convolution of exp and wald can be normalized)
+# but we don't want to see the whole range
+exwaldpdf_xrange = collect(0.0:0.025:100.0)
+exwaldpdf_displayrange = collect(0.0:.025:50.0)
 
 const min_deflect = -500.0
 const max_deflect = 1000.0
@@ -218,8 +226,8 @@ hc_animation_axis.xgridvisible = false
 hc_animation_axis.ygridvisible = false
 # plot open state probability as a function of kinocilium deflection
 lines!(hc_animation_axis, deflect_range,  p_open(deflect_range*nano),
-           linewidth =4,
-           color = :darkcyan,
+           linewidth =3,
+           color = RGB(.4, .4, .4),
            leg = false,
            limits = FRect(-500., -0.1, 1500., 1.2)
       )
@@ -229,7 +237,7 @@ kinocilium_slider  = LSlider(scene,
                   )
 haircell_animation_layout[2,2] = kinocilium_slider
 haircell_animation_layout[1, 2] = LText(scene,
-        "HAIR CELL MECHANOSENSORY TRANSDUCTION CHANNELS", textsize = 14)
+        "HAIR CELL", textsize = 14)
 haircell_animation_layout[2, 1] = LText(scene, "Δk", textsize = 20)
 controlpanel_layout[1,1] = haircell_animation_layout
 # GUI for Exwald model
@@ -243,7 +251,7 @@ exwald_layout = GridLayout(4,3,
 
 # EXWALD MODEL CONTROL PANEL (TOP RIGHT)
 exwald_layout[1,1:3] = LText(scene,
-         "AFFERENT INTER-SPIKE INTERVAL DENSITY (EXWALD)", textsize = 14)
+         "AFFERENT INTER-SPIKE INTERVAL DISTRIBUTION", textsize = 14)
 
 # τ slider
 exwald_layout[2,1] = LText(scene, "τ", textsize = 20)
@@ -268,17 +276,20 @@ exwald_layout[4,1:3]= exwald_plot_axis = LAxis(scene,
 exwald_plot_axis.backgroundcolor[] = BGcolor
 exwald_plot_axis.xlabel = "Interval (ms)"
 exwald_plot_axis.ylabel = "probability density"
-exwald_x = collect(0.0:.025:50.0)
+
+
+exwaldpdfplot_xrange = collect(0.0:.025:250.0)
 
 #  two sliders control exwald parameters & update plot interactively
 exwald_pdf_plothandle = plot!(exwald_plot_axis,
-                exwald_x, lift((μ_control, λ_control, τ_control) ->
-                exwaldpdf( 1.9/p_open(μ_control*nano),
-                           10.0^λ_control,
-                           10.0^τ_control, exwald_x),
-                          kinocilium_slider.value,
-                          lam_slider.value,
-                          tau_slider.value ) )
+    exwaldpdf_displayrange,
+    lift((μ_control, λ_control, τ_control) ->
+      exwaldpdf( 1.9/p_open(μ_control*nano),
+      10.0^λ_control,
+      10.0^τ_control, exwaldpdf_xrange)[1:length(exwaldpdf_displayrange)],
+      kinocilium_slider.value,
+      lam_slider.value,
+      tau_slider.value ), linewidth = 3, color = RGB(.4, .4, .4) )
 
 # insert exwald panel into control panel
 controlpanel_layout[1,2] = exwald_layout
@@ -450,7 +461,7 @@ function drawHairCell(panel, x0,y0, state)
   end
 
   # colours
-  c = [state[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+  c = [state[i] ? open_color : closed_color for i in 1:48]
   channel_handle = scattergon(panel, x,y, 16,
                               markersize = 52, color = c,
                               strokewidth = .75, strokecolor = :black)
@@ -523,7 +534,7 @@ interval = 0.0
 
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
-        @inbounds [haircell.gateOpen[i] ? :gold1 : :dodgerblue1 for i in 1:48]
+        @inbounds [haircell.gateOpen[i] ? open_color : closed_color for i in 1:48]
 
   # shift display buffers left, insert new values on right
   shiftinsert(receptor_current_trace, haircell.current[]/nano )
