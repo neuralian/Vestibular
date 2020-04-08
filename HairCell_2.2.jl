@@ -110,6 +110,8 @@ struct HairCell
    gateOpen::Array{Bool,1}      # gate states (true=open)
    current::Array{Float32,1}    # receptor channel current
    Δk::Array{Float32,1}         # kinocilium deflection
+   Δk_::Array{Float32,1}        # previous kinocilium deflection
+   x::Array{Float32,1}          # gating spring extension
 
    # parameters
    resting_potential::Float32
@@ -133,13 +135,15 @@ function HairCell(resting_potential)
                     rand(48).<p,
                     [0.0],
                     [0.0],
+                    [0.0],
+                    [0.0],
 
                     haircell_resting_potential,
                     haircell_input_resistance,
                     haircell_capacitance,
                     48,
                     haircell_single_channel_conductance,
-                    haircell_transduction_reversal_potential
+                    haircell_transduction_reversal_potential,
                     adaptation_motor_time_constant)
 end
 
@@ -151,10 +155,15 @@ function haircell_stateupdate!(haircell::HairCell, kinocilium_deflection)
   global dt  # not necessary if dt is const, but documents where dt comes from
   global nano  # ditto
 
-  # random (Normal) Brownian perturbation to deflection, RMS 2nm
+  # change in kinocilium defection including 2nm RMS noise
+  haircell.Δk_[] = haircell.Δk[]  # previous deflection
   haircell.Δk[] = (kinocilium_deflection + 2.0f0*randn(Float32,1)[])*nano
 
-  haircell.p_open[] = p_open(haircell.Δk[])  # gate open probability
+  haircell.x[] += (haircell.Δk[] - haircell.Δk_[]) -
+                dt*haircell.x[]/haircell.τ_adaptationmotor
+
+
+  haircell.p_open[] = p_open(haircell.x[])  # gate open probability
 
   haircell.gateOpen[:] = rand(48) .< haircell.p_open[]     # gate states
 
@@ -538,7 +547,7 @@ interval = 0.0
 
   # update display
   movegon(kinocilium_handle, 1, kcx0+haircell.Δk[]*hairScale/nano, kcy0)
-  movegon(tracker_handle, 1, haircell.Δk[]/nano, haircell.p_open[])
+  movegon(tracker_handle, 1, haircell.x[]/nano, haircell.p_open[])
 
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
