@@ -41,7 +41,7 @@ maxTime = 0.1   # duration of time series plots /s
 BGcolor = RGB(.995, .995, .975)
 SCcolor = RGB(.95, .95, .95)
 open_color = :gold1
-closed_color = :lightblue
+closed_color = :cornflowerblue
 #RGB(0.5, 0.75, .9)
 
 # exwald pdf compute range needs to extend over all possible interval lengths
@@ -384,60 +384,60 @@ hc_animation_axis.limits[] = FRect(-500., -0.1, 2500., 1.2)
 
 display(scene)
 
-"""
-   Kluge for problem that scatter() gets the aspect ratio wrong in sublayouts
-   and draws distorted markers. This draws scatterplots uisng n-gon markers.
-   NB The initial code worked out the aspect ratio from the axis limits,
-   which worked in initial tests but for reasons yet to be determined is
-   not correct.  The "aspect" factor needs an additional kluge factor. This
-   seems to depend on the scene layout but at present I adjust it manually.
-"""
-function scattergon(ax, x, y, n;
-                    markersize = 1, color = :red,
-                    strokewidth=.1, strokecolor=:black)
-    # scatterplot points x as n-gons
-    # size re. x-axis, aspect ratio adjusted to compensate for dataaspectratio
-    # (workaround for bug(?) in Makielayout)
-    # NB use movegon to reposition these markers (for animation)
+# """
+#    Kluge for problem that scatter() gets the aspect ratio wrong in sublayouts
+#    and draws distorted markers. This draws scatterplots uisng n-gon markers.
+#    NB The initial code worked out the aspect ratio from the axis limits,
+#    which worked in initial tests but for reasons yet to be determined is
+#    not correct.  The "aspect" factor needs an additional kluge factor. This
+#    seems to depend on the scene layout but at present I adjust it manually.
+# """
+# function scattergon(ax, x, y, n;
+#                     markersize = 1, color = :red,
+#                     strokewidth=.1, strokecolor=:black)
+#     # scatterplot points x as n-gons
+#     # size re. x-axis, aspect ratio adjusted to compensate for dataaspectratio
+#     # (workaround for bug(?) in Makielayout)
+#     # NB use movegon to reposition these markers (for animation)
+#
+#     axlim = decompose(Point2f0, ax.limits[])
+#     xlim = axlim[4][1] - axlim[1][1]
+#     ylim = axlim[4][2] - axlim[1][2]
+#     aspect = 1.5*ylim/xlim
+#
+#     ngonx = [0.5*markersize*cos(2.0*π*i/n) for i in 1:n]
+#     ngony = [0.5*markersize*aspect*sin(2.0*π*i/n) for i in 1:n]
+#
+#     ngon = [[ Point2f0(x[1]+ ngonx[j], y[1] + ngony[j]) for j in 1:n]]
+#
+#     for i in 2:length(x)
+#         push!(ngon,[ Point2f0(x[i]+ ngonx[j], y[i] + ngony[j]) for j in 1:n] )
+#     end
+#
+#     h = poly!(ax, ngon, color = color,
+#                 strokewidth=strokewidth, strokecolor=strokecolor, zorder = 1)
+#
+#     return h    # observable marker vertex coordinates
+# end
 
-    axlim = decompose(Point2f0, ax.limits[])
-    xlim = axlim[4][1] - axlim[1][1]
-    ylim = axlim[4][2] - axlim[1][2]
-    aspect = 1.5*ylim/xlim
-
-    ngonx = [0.5*markersize*cos(2.0*π*i/n) for i in 1:n]
-    ngony = [0.5*markersize*aspect*sin(2.0*π*i/n) for i in 1:n]
-
-    ngon = [[ Point2f0(x[1]+ ngonx[j], y[1] + ngony[j]) for j in 1:n]]
-
-    for i in 2:length(x)
-        push!(ngon,[ Point2f0(x[i]+ ngonx[j], y[i] + ngony[j]) for j in 1:n] )
-    end
-
-    h = poly!(ax, ngon, color = color,
-                strokewidth=strokewidth, strokecolor=strokecolor, zorder = 1)
-
-    return h    # observable marker vertex coordinates
-end
-
-"""
-  Move polygon created by scattergon() to (x,y)
-  NB an ngon returned from scattergon() is an observable
-    1D array whose entries are nx2 arrays defining n-gon markers.
-    Index i specifies which of these to move to (x,y).
-    This version moves only 1 marker.
-"""
-function movegon(ngon, i, x,y)
-
-    vertex = ngon[1][][i]
-    n = size(vertex,1)
-    oldpos = (sum(vertex, dims=1)/n)[1]  # marker location Point2f0
-    newpos = Point2f0(x,y)
-    @inbounds for j in 1:n
-        vertex[j] = vertex[j] - oldpos + newpos
-    end
-    ngon[1][] = ngon[1][]   # triggers re-draw (ngon is observable)
-end
+# """
+#   Move polygon created by scattergon() to (x,y)
+#   NB an ngon returned from scattergon() is an observable
+#     1D array whose entries are nx2 arrays defining n-gon markers.
+#     Index i specifies which of these to move to (x,y).
+#     This version moves only 1 marker.
+# """
+# function movegon(ngon, i, x,y)
+#
+#     vertex = ngon[1][][i]
+#     n = size(vertex,1)
+#     oldpos = (sum(vertex, dims=1)/n)[1]  # marker location Point2f0
+#     newpos = Point2f0(x,y)
+#     @inbounds for j in 1:n
+#         vertex[j] = vertex[j] - oldpos + newpos
+#     end
+#     ngon[1][] = ngon[1][]   # triggers re-draw (ngon is observable)
+# end
 
 """
     Function to draw sterocilia (from above) as an array of discs &
@@ -450,10 +450,11 @@ function drawHairCell(panel, x0,y0, state)
 
   # kinocilium, drawn in scene at (x0, y0)
   # outline (stays in place)
-  scattergon(panel, [x0],[y0], 6, markersize = 64,
+  scatter!(panel, [x0],[y0], markersize = 14px, marker = :hexagon,
           color = :white, strokecolor =:black,  strokewidth=.75)
-  kinocilium_handle =   scattergon(panel, [x0],[y0], 6, markersize = 64,
-            color = RGBA(.75,.25,.5,.5), strokecolor =:black,  strokewidth=.75)
+  kinocilium_handle =   scatter!(panel, [x0],[y0], markersize = 14px,
+          marker = :hexagon,  color = RGBA(.75,.25,.5,.5),
+          strokecolor =:black,  strokewidth=.75)
 
   x = zeros(48)
   y = zeros(48)
@@ -480,11 +481,8 @@ function drawHairCell(panel, x0,y0, state)
 
   # colours
   c = [state[i] ? open_color : closed_color for i in 1:48]
-  # channel_handle = scattergon(panel, x,y, 16,
-  #                             markersize = 52, color = c,
-  #                             strokewidth = .75, strokecolor = :black)
 
-  channel_handle = scatter!(panel, x,y, markersize = 12px, 
+  channel_handle = scatter!(panel, x,y, markersize = 12px,
     color = c, strokecolor = :black, strokewidth=1)
 
   # return observable handles to bundle and kinocilium
@@ -496,8 +494,8 @@ end
                 drawHairCell(hc_animation_axis,kcx0, kcy0, rand(48).<pᵣ)
 
 # draw state tracker
-tracker_handle = scattergon(hc_animation_axis, [0],[p_open(0.)], 16,
-                              markersize = 42, color = RGBA(.75,.25,.5),
+tracker_handle = scatter!(hc_animation_axis, [0],[p_open(0.)],
+                              markersize = 8px, color = RGBA(.75,.25,.5),
                               strokecolor =:black,  strokewidth=.75)
 
 display(scene)
@@ -551,8 +549,9 @@ interval = 0.0
   end
 
   # update display
-  movegon(kinocilium_handle, 1, kcx0+haircell.Δk[]*hairScale/nano, kcy0)
-  movegon(tracker_handle, 1, haircell.x[]/nano, haircell.p_open[])
+  kinocilium_handle[1][] = [Point2f0(kcx0+haircell.Δk[]*hairScale/nano, kcy0)]
+  tracker_handle[1][] = [Point2f0(haircell.x[]/nano, haircell.p_open[])]
+  #movegon(tracker_handle, 1, haircell.x[]/nano, haircell.p_open[])
 
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
