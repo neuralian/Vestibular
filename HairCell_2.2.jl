@@ -8,7 +8,7 @@
 using Makie
 using MakieLayout
 using StatsMakie
-# using AbstractPlotting
+using AbstractPlotting: px
 using Colors
 using Distributions
 using Printf
@@ -41,7 +41,8 @@ maxTime = 0.1   # duration of time series plots /s
 BGcolor = RGB(.995, .995, .975)
 SCcolor = RGB(.95, .95, .95)
 open_color = :gold1
-closed_color = RGB(0.5, 0.75, .9)
+closed_color = :lightblue
+#RGB(0.5, 0.75, .9)
 
 # exwald pdf compute range needs to extend over all possible interval lengths
 # (so convolution of exp and wald can be normalized)
@@ -479,9 +480,12 @@ function drawHairCell(panel, x0,y0, state)
 
   # colours
   c = [state[i] ? open_color : closed_color for i in 1:48]
-  channel_handle = scattergon(panel, x,y, 16,
-                              markersize = 52, color = c,
-                              strokewidth = .75, strokecolor = :black)
+  # channel_handle = scattergon(panel, x,y, 16,
+  #                             markersize = 52, color = c,
+  #                             strokewidth = .75, strokecolor = :black)
+
+  channel_handle = scatter!(panel, x,y, markersize = 12px, 
+    color = c, strokecolor = :black, strokewidth=1)
 
   # return observable handles to bundle and kinocilium
   return (channel_handle,  kinocilium_handle)
@@ -530,6 +534,7 @@ interval = 0.0
   global framecount = framecount + 1
   global interval
 
+
   haircell_stateupdate!(haircell, kinocilium_slider.value[])
   threshold = 250.
 
@@ -551,7 +556,7 @@ interval = 0.0
 
   # gate marker is gold if open, blue if closed
   channel_handle[:color] =
-        @inbounds [haircell.gateOpen[i] ? open_color : closed_color for i in 1:48]
+         [haircell.gateOpen[i] ? open_color : closed_color for i in 1:48]
 
   # shift display buffers left, insert new values on right
   shiftinsert(receptor_current_trace, haircell.current[]/nano )
